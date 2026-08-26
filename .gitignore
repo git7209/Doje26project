@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+*.pid.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build, cache, and test output
+dist/
+build/
+coverage/
+.cache/
+.tmp/
+tmp/
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local database dumps and backups
+*.dump
+*.bak
+*.backup
+
+# Presentation tooling: temporary work and inspection output
+**/.pptx-build/
+**/.pptx-edit/
+*.inspect.ndjson
+
+# Uploaded custom container images
+uploads/images/*
