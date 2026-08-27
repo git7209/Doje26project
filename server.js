@@ -5,39 +5,13 @@ const crypto = require("node:crypto");
 const { URL } = require("node:url");
 require("dotenv").config();
 const { Pool } = require("pg");
+const { DockerEngine, DockerEngineError } = require("./docker-engine");
 const PORT = Number(process.env.PORT || 8080),
+  HOST = process.env.HOST || "127.0.0.1",
   root = __dirname,
   uploadDir = path.join(root, "uploads", "images"),
-  pool = new Pool();
-const savedImages = [
-  {
-    reference: "ubuntu:24.04",
-    label: "Ubuntu",
-    version: "24.04 LTS",
-    os: "Linux",
-    arch: "amd64",
-    sizeMb: 125,
-    updatedAt: "2026-08-25T00:00:00Z",
-  },
-  {
-    reference: "debian:12",
-    label: "Debian",
-    version: "12 Bookworm",
-    os: "Linux",
-    arch: "amd64",
-    sizeMb: 98,
-    updatedAt: "2026-08-24T00:00:00Z",
-  },
-  {
-    reference: "alpine:3.22",
-    label: "Alpine",
-    version: "3.22",
-    os: "Linux",
-    arch: "amd64",
-    sizeMb: 8,
-    updatedAt: "2026-08-23T00:00:00Z",
-  },
-];
+  pool = new Pool(),
+  docker = new DockerEngine();
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
@@ -144,6 +118,21 @@ async function getDashboard(database = pool) {
       stopped: containers.filter((x) => x.status === "stopped").length,
       paused: containers.filter((x) => x.status === "paused").length,
       errors: containers.filter((x) => x.status === "error").length,
+    },
+  };
+}
+async function getDockerDashboard(engine = docker) {
+  const containers = await engine.listContainers();
+  return {
+    ok: true,
+    runtime: "docker",
+    containers,
+    summary: {
+      total: containers.length,
+      running: containers.filter((x) => x.status === "running").length,
+      stopped: containers.filter((x) => x.status === "stopped").length,
+      paused: containers.filter((x) => x.status === "paused").length,
+      errors: containers.filter((x) => x.status === "error" || x.status === "dead").length,
     },
   };
 }
@@ -274,16 +263,16 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
     if (url.pathname === "/api/health") {
-      await pool.query("SELECT 1");
-      sendJson(res, 200, { ok: true, database: "postgresql" });
+      await docker.ping();
+      sendJson(res, 200, { ok: true, runtime: "docker" });
       return;
     }
     if (url.pathname === "/api/images" && req.method === "GET") {
       sendJson(res, 200, {
         ok: true,
-        images: savedImages,
+        images: await docker.listImages(),
         refreshed: url.searchParams.get("refresh") === "1",
-        autoRefreshMinutes: 60,
+        autoRefreshMinutes: 5,
       });
       return;
     }
@@ -298,7 +287,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/dashboard" && req.method === "GET") {
-      sendJson(res, 200, await getDashboard());
+      sendJson(res, 200, await getDockerDashboard());
       return;
     }
     if (url.pathname === "/api/containers" && req.method === "POST") {
@@ -308,16 +297,18 @@ const server = http.createServer(async (req, res) => {
           "UNSUPPORTED_MEDIA_TYPE",
           "Content-Type은 application/json이어야 합니다.",
         );
-      sendJson(res, 201, {
-        ok: true,
-        container: await createContainer(await readJsonBody(req)),
-      });
+      const input = validateContainerInput(await readJsonBody(req));
+      sendJson(res, 201, { ok: true, container: await docker.createContainer(input) });
       return;
     }
     serveStatic(req, res, url.pathname);
   } catch (error) {
     if (error instanceof ApiError)
       sendError(res, error.status, error.code, error.message, error.fields);
+    else if (error instanceof DockerEngineError) {
+      const status = error.status >= 400 && error.status < 500 ? error.status : 503;
+      sendError(res, status, "DOCKER_ENGINE_ERROR", error.message);
+    }
     else {
       console.error(error);
       sendError(res, 503, "SERVER_ERROR", "요청을 처리하지 못했습니다.");
@@ -325,13 +316,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 if (require.main === module)
-  server.listen(PORT, () =>
-    console.log(`LXC dashboard: http://localhost:${PORT}`),
+  server.listen(PORT, HOST, () =>
+    console.log(`LXC dashboard: http://${HOST}:${PORT}`),
   );
 module.exports = {
   ApiError,
   createContainer,
   getDashboard,
+  getDockerDashboard,
   readJsonBody,
   server,
   validateContainerInput,
