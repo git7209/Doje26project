@@ -6,7 +6,33 @@ const statusLabels = {
   dead: "오류",
 };
 
-export default function ContainerSection({ containers }) {
+export default function ContainerSection({ containers, onChanged, notify }) {
+  async function runAction(container, action) {
+    if (action === "delete" && !window.confirm(`${container.name} 컨테이너를 삭제하시겠습니까?`))
+      return;
+    try {
+      if (action === "delete") await deleteContainer(container.id);
+      else await runContainerAction(container.id, action);
+      const labels = { start: "시작", stop: "중지", restart: "재시작", delete: "삭제" };
+      notify(`${container.name} 컨테이너 ${labels[action]} 완료`);
+      await onChanged();
+    } catch (error) {
+      notify(error.message);
+    }
+  }
+
+  function actions(container) {
+    const running = container.status === "running";
+    const paused = container.status === "paused";
+    return (
+      <div className="container-actions">
+        {running && <button type="button" onClick={() => runAction(container, "stop")}>중지</button>}
+        {!running && !paused && <button type="button" onClick={() => runAction(container, "start")}>시작</button>}
+        {(running || paused) && <button type="button" onClick={() => runAction(container, "restart")}>재시작</button>}
+        <button type="button" className="danger" disabled={running || paused} onClick={() => runAction(container, "delete")}>삭제</button>
+      </div>
+    );
+  }
   return (
     <section className="operations-grid">
       <article className="table-panel">
@@ -24,7 +50,7 @@ export default function ContainerSection({ containers }) {
                   <td>{Number(container.cpuPercent || 0)}% / {Number(container.memoryMb || 0)} MB</td>
                   <td>{container.ipAddress || "-"}</td>
                   <td>{container.uptime || "-"}</td>
-                  <td><span className="action-placeholder">다음 단계</span></td>
+                  <td>{actions(container)}</td>
                 </tr>
               ))}
             </tbody>
@@ -38,3 +64,4 @@ export default function ContainerSection({ containers }) {
     </section>
   );
 }
+import { deleteContainer, runContainerAction } from "../api/dockerApi.js";

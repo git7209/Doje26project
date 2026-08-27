@@ -1,5 +1,6 @@
 import AppHeader from "./components/AppHeader.jsx";
 import ContainerSection from "./components/ContainerSection.jsx";
+import CreateContainerDialog from "./components/CreateContainerDialog.jsx";
 import DashboardMetrics from "./components/DashboardMetrics.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 
@@ -10,6 +11,8 @@ export default function App() {
   const [lastChecked, setLastChecked] = useState("확인 전");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [notification, setNotification] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -37,6 +40,17 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  function notify(message) {
+    setNotification(message);
+    window.setTimeout(() => setNotification(""), 2500);
+  }
+
+  async function handleCreated(name) {
+    setDialogOpen(false);
+    notify(`${name} 컨테이너 생성 완료`);
+    await refresh();
+  }
+
   return (
     <>
       <Sidebar total={dashboard.summary.total || 0} />
@@ -49,7 +63,7 @@ export default function App() {
               <button type="button" onClick={refresh} disabled={loading}>
                 {loading ? "조회 중..." : "새로고침"}
               </button>
-              <button type="button" className="primary">컨테이너 생성</button>
+              <button type="button" className="primary" onClick={() => setDialogOpen(true)}>컨테이너 생성</button>
             </div>
           </section>
           <p className="image-update-note">
@@ -68,9 +82,13 @@ export default function App() {
             </dl>
           </section>
           <DashboardMetrics dashboard={dashboard} />
-          <ContainerSection containers={dashboard.containers} />
+          <ContainerSection containers={dashboard.containers} onChanged={refresh} notify={notify} />
         </div>
       </main>
+      {dialogOpen && (
+        <CreateContainerDialog images={images} onClose={() => setDialogOpen(false)} onCreated={handleCreated} />
+      )}
+      {notification && <div className="notification">{notification}</div>}
     </>
   );
 }

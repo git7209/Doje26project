@@ -10,9 +10,8 @@
   color: #b91c1c;
   font-size: 11px;
 }
-.action-placeholder {
-  color: var(--ink3);
-  font-size: 9px;
+.notification:not([hidden]) {
+  display: block;
 }
 
 @media (max-width: 760px) {
