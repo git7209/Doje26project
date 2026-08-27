@@ -6,7 +6,7 @@ const { URL } = require("node:url");
 require("dotenv").config();
 const { Pool } = require("pg");
 const { DockerEngine, DockerEngineError } = require("./docker-engine");
-const PORT = Number(process.env.PORT || 8080),
+const PORT = Number(process.env.PORT || 8081),
   HOST = process.env.HOST || "127.0.0.1",
   root = __dirname,
   uploadDir = path.join(root, "uploads", "images"),
@@ -259,10 +259,12 @@ function serveStatic(req, res, pathname) {
     ".css": "text/css",
     ".js": "text/javascript",
   };
+  const content = fs.readFileSync(filePath);
   res.writeHead(200, {
     "Content-Type": `${types[path.extname(filePath)] || "application/octet-stream"}; charset=utf-8`,
+    "Content-Length": content.length,
   });
-  fs.createReadStream(filePath).pipe(res);
+  res.end(content);
 }
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);

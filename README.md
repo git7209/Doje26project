@@ -7,7 +7,7 @@ Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 
 1. Docker Engine을 실행합니다.
 2. `.env.example`을 `.env`로 복사합니다.
 3. `npm start`를 실행합니다.
-4. `http://localhost:8080`을 엽니다.
+4. `http://localhost:8081`을 엽니다.
 
 현재 Windows 환경에서는 Docker Engine이 Ubuntu WSL2 안에 설치되어 있으므로 다음
 명령으로 서버를 실행합니다.
@@ -15,6 +15,11 @@ Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 
 ```powershell
 wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/deok7/LxcProgramMade && /usr/bin/npm start"
 ```
+
+VS Code Live Server의 `http://localhost:5500`으로 열면 상대 경로 `/api` 요청도
+5500 포트로 전달되어 Docker API와 연결되지 않습니다. 이 프로젝트는 Live Server를
+사용하지 않고 Node 서버 주소인 `http://localhost:8081`로 접속합니다. Windows의
+8080 포트는 기존 Apache가 사용하고 있어 기본 포트를 8081로 지정했습니다.
 
 서버는 기본적으로 `127.0.0.1`에서만 요청을 받습니다. Docker socket 접근 권한은
 호스트 관리자 권한과 비슷하므로, 인증 기능을 추가하기 전에는 `HOST=0.0.0.0`으로
