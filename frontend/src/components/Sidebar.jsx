@@ -1,4 +1,4 @@
-export default function Sidebar() {
+export default function Sidebar({ total }) {
   return (
     <>
       <button className="sidebar-reopen" type="button" aria-label="사이드바 펼치기" hidden>
@@ -9,7 +9,7 @@ export default function Sidebar() {
         <a className="brand" href="#"><span>LX</span><b>LXC Console</b></a>
         <nav className="primary-nav" aria-label="주 메뉴">
           <a className="active" href="#">개요</a>
-          <a href="#">컨테이너 <span><b>0</b>개</span></a>
+          <a href="#">컨테이너 <span><b>{total}</b>개</span></a>
           <a href="#">이미지</a><a href="#">네트워크</a>
           <a href="#">스토리지</a><a href="#">이벤트</a>
         </nav>
