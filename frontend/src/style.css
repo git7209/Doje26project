@@ -1,0 +1,20 @@
+:root {
+  font-family: Arial, sans-serif;
+  color: #172033;
+  background: #f4f6f8;
+}
+body {
+  margin: 0;
+}
+.react-checkpoint {
+  width: min(680px, calc(100% - 48px));
+  margin: 80px auto;
+  padding: 32px;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+  background: #fff;
+}
+.react-checkpoint p,
+.react-checkpoint span {
+  color: #667085;
+}
