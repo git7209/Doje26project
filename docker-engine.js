@@ -56,6 +56,25 @@ function uptimeFromCreated(createdSeconds, now = Date.now()) {
   return `${Math.floor(seconds / 86400)}일`;
 }
 
+function resourceUsage(stats) {
+  const cpuDelta =
+    (stats.cpu_stats?.cpu_usage?.total_usage || 0) -
+    (stats.precpu_stats?.cpu_usage?.total_usage || 0);
+  const systemDelta =
+    (stats.cpu_stats?.system_cpu_usage || 0) -
+    (stats.precpu_stats?.system_cpu_usage || 0);
+  const cpuCount =
+    stats.cpu_stats?.online_cpus || stats.cpu_stats?.cpu_usage?.percpu_usage?.length || 1;
+  const cpuPercent =
+    cpuDelta > 0 && systemDelta > 0 ? (cpuDelta / systemDelta) * cpuCount * 100 : 0;
+  const memory = stats.memory_stats || {};
+  const cache = memory.stats?.inactive_file ?? memory.stats?.cache ?? 0;
+  return {
+    cpuPercent: Number(cpuPercent.toFixed(2)),
+    memoryMb: Number((Math.max(0, (memory.usage || 0) - cache) / 1024 / 1024).toFixed(1)),
+  };
+}
+
 class DockerEngine {
   constructor(options = {}) {
     this.socketPath = options.socketPath || socketPathFromEnvironment();
@@ -144,8 +163,16 @@ class DockerEngine {
 
   async listContainers() {
     const rows = (await this.apiRequest("GET", "/containers/json?all=true")) || [];
-    return rows.map((row) => {
+    return Promise.all(rows.map(async (row) => {
       const networks = Object.values(row.NetworkSettings?.Networks || {});
+      let usage = { cpuPercent: 0, memoryMb: 0 };
+      if (row.State === "running") {
+        try {
+          usage = await this.containerStats(row.Id);
+        } catch (error) {
+          if (!(error instanceof DockerEngineError)) throw error;
+        }
+      }
       return {
         id: row.Id,
         name: (row.Names?.[0] || row.Id.slice(0, 12)).replace(/^\//, ""),
@@ -154,13 +181,35 @@ class DockerEngine {
         ports: (row.Ports || [])
           .map((port) => `${port.PublicPort || ""}:${port.PrivatePort}/${port.Type}`)
           .join(","),
-        cpuPercent: 0,
-        memoryMb: 0,
+        ...usage,
         ipAddress: networks.find((network) => network.IPAddress)?.IPAddress || "-",
         uptime: row.State === "running" ? uptimeFromCreated(row.Created) : "-",
         updatedAt: new Date((row.Created || 0) * 1000).toISOString(),
       };
-    });
+    }));
+  }
+
+  async containerStats(id) {
+    const stats = await this.apiRequest(
+      "GET",
+      `/containers/${encodeURIComponent(id)}/stats?stream=false&one-shot=true`,
+    );
+    return resourceUsage(stats || {});
+  }
+
+  async containerAction(id, action) {
+    if (!new Set(["start", "stop", "restart"]).has(action))
+      throw new DockerEngineError(400, "지원하지 않는 컨테이너 작업입니다.");
+    await this.apiRequest(
+      "POST",
+      `/containers/${encodeURIComponent(id)}/${action}?t=3`,
+    );
+    return { id, action };
+  }
+
+  async removeContainer(id) {
+    await this.apiRequest("DELETE", `/containers/${encodeURIComponent(id)}?v=true`);
+    return { id, action: "delete" };
   }
 
   async createContainer(input) {
@@ -192,5 +241,6 @@ module.exports = {
   imageLabel,
   imageVersion,
   parsePorts,
+  resourceUsage,
   uptimeFromCreated,
 };

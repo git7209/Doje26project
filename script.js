@@ -250,6 +250,42 @@ function statusLabel(status) {
     ] || "확인 중"
   );
 }
+function makeActionButton(label, action, container, disabled = false) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.dataset.action = action;
+  button.dataset.containerId = container.id || container.name;
+  button.dataset.containerName = container.name;
+  button.disabled = disabled;
+  if (action === "delete") button.className = "danger";
+  return button;
+}
+function containerActions(container) {
+  const cell = document.createElement("td");
+  const actions = document.createElement("div");
+  actions.className = "container-actions";
+  if (container.status === "running") {
+    actions.append(
+      makeActionButton("중지", "stop", container),
+      makeActionButton("재시작", "restart", container),
+    );
+  } else if (container.status === "paused") {
+    actions.append(makeActionButton("재시작", "restart", container));
+  } else {
+    actions.append(makeActionButton("시작", "start", container));
+  }
+  actions.append(
+    makeActionButton(
+      "삭제",
+      "delete",
+      container,
+      container.status === "running" || container.status === "paused",
+    ),
+  );
+  cell.append(actions);
+  return cell;
+}
 function renderDashboard(data) {
   const list = $("#container-list");
   const containers = data.containers || [],
@@ -261,7 +297,7 @@ function renderDashboard(data) {
   $("#sidebar-container-total").textContent = summary.total || 0;
   if (!containers.length) {
     list.innerHTML =
-      '<tr><td colspan="5"><strong>컨테이너 0개</strong><small>등록된 컨테이너가 없습니다.</small></td></tr>';
+      '<tr><td colspan="6"><strong>컨테이너 0개</strong><small>등록된 컨테이너가 없습니다.</small></td></tr>';
     return;
   }
   list.replaceChildren(
@@ -284,6 +320,7 @@ function renderDashboard(data) {
         } else cell.textContent = v;
         row.append(cell);
       });
+      row.append(containerActions(c));
       return row;
     }),
   );
@@ -306,6 +343,35 @@ async function refreshDashboard() {
     refreshButton.textContent = "새로고침";
   }
 }
+async function runContainerAction(button) {
+  const { action, containerId, containerName } = button.dataset;
+  if (
+    action === "delete" &&
+    !window.confirm(`${containerName} 컨테이너를 삭제하시겠습니까?`)
+  )
+    return;
+  const rowButtons = button.closest("tr").querySelectorAll("button");
+  rowButtons.forEach((item) => (item.disabled = true));
+  try {
+    const base = `/api/containers/${encodeURIComponent(containerId)}`;
+    const response = await fetch(action === "delete" ? base : `${base}/${action}`, {
+      method: action === "delete" ? "DELETE" : "POST",
+    });
+    const data = await response.json();
+    if (!response.ok)
+      throw new Error(data.error?.message || "컨테이너 작업에 실패했습니다.");
+    const labels = { start: "시작", stop: "중지", restart: "재시작", delete: "삭제" };
+    notify(`${containerName} 컨테이너 ${labels[action]} 완료`);
+    await refreshDashboard();
+  } catch (error) {
+    notify(error.message);
+    rowButtons.forEach((item) => (item.disabled = false));
+  }
+}
+$("#container-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (button) runContainerAction(button);
+});
 refreshButton.addEventListener("click", refreshDashboard);
 loadImages();
 refreshDashboard();

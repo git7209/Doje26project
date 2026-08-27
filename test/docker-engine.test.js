@@ -6,9 +6,10 @@ const {
   imageLabel,
   imageVersion,
   parsePorts,
+  resourceUsage,
   uptimeFromCreated,
 } = require("../docker-engine");
-const { getDockerDashboard } = require("../server");
+const { getDockerDashboard, validateContainerId } = require("../server");
 
 test("이미지 이름과 버전을 레지스트리 주소에서 분리한다", () => {
   assert.equal(imageLabel("registry.example.com/team/web:1.2.3"), "web");
@@ -92,4 +93,43 @@ test("실행 시간을 읽기 쉬운 단위로 표시한다", () => {
   const now = 2_000_000 * 1000;
   assert.equal(uptimeFromCreated(1_999_970, now), "30초");
   assert.equal(uptimeFromCreated(1_992_800, now), "2시간");
+});
+
+test("Docker 통계에서 CPU와 캐시 제외 메모리를 계산한다", () => {
+  assert.deepEqual(resourceUsage({
+    cpu_stats: {
+      cpu_usage: { total_usage: 300, percpu_usage: [1, 2] },
+      system_cpu_usage: 2000,
+      online_cpus: 2,
+    },
+    precpu_stats: {
+      cpu_usage: { total_usage: 100 },
+      system_cpu_usage: 1000,
+    },
+    memory_stats: {
+      usage: 100 * 1024 * 1024,
+      stats: { inactive_file: 20 * 1024 * 1024 },
+    },
+  }), { cpuPercent: 40, memoryMb: 80 });
+});
+
+test("허용된 컨테이너 동작만 Engine API로 전송한다", async () => {
+  const engine = new DockerEngine({ apiVersion: "1.55" });
+  const calls = [];
+  engine.request = async (method, path) => calls.push({ method, path });
+  await engine.containerAction("web-01", "start");
+  await engine.containerAction("web-01", "restart");
+  await engine.removeContainer("web-01");
+  assert.deepEqual(calls, [
+    { method: "POST", path: "/v1.55/containers/web-01/start?t=3" },
+    { method: "POST", path: "/v1.55/containers/web-01/restart?t=3" },
+    { method: "DELETE", path: "/v1.55/containers/web-01?v=true" },
+  ]);
+  await assert.rejects(() => engine.containerAction("web-01", "exec"), DockerEngineError);
+});
+
+test("컨테이너 ID와 이름 형식을 검증한다", () => {
+  assert.equal(validateContainerId("web-01"), "web-01");
+  assert.throws(() => validateContainerId("../docker.sock"));
+  assert.throws(() => validateContainerId("bad/name"));
 });

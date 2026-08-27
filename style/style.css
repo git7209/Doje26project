@@ -451,6 +451,23 @@ td small {
   gap: 7px;
   align-items: center;
 }
+.container-actions {
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+.container-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 9px;
+}
+.container-actions .danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
 .events-panel ol {
   margin: 0;
   padding: 0;

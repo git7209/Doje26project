@@ -85,6 +85,11 @@ function validateContainerInput(input) {
     );
   return { name, image, ports, cpuLimit, memoryMb };
 }
+function validateContainerId(value) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value || ""))
+    throw new ApiError(400, "INVALID_CONTAINER_ID", "올바르지 않은 컨테이너 ID입니다.");
+  return value;
+}
 async function createContainer(input, database = pool) {
   const v = validateContainerInput(input);
   try {
@@ -301,6 +306,26 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 201, { ok: true, container: await docker.createContainer(input) });
       return;
     }
+    const actionMatch = url.pathname.match(
+      /^\/api\/containers\/([^/]+)\/(start|stop|restart)$/,
+    );
+    if (actionMatch && req.method === "POST") {
+      const id = validateContainerId(decodeURIComponent(actionMatch[1]));
+      sendJson(res, 200, {
+        ok: true,
+        result: await docker.containerAction(id, actionMatch[2]),
+      });
+      return;
+    }
+    const deleteMatch = url.pathname.match(/^\/api\/containers\/([^/]+)$/);
+    if (deleteMatch && req.method === "DELETE") {
+      const id = validateContainerId(decodeURIComponent(deleteMatch[1]));
+      sendJson(res, 200, {
+        ok: true,
+        result: await docker.removeContainer(id),
+      });
+      return;
+    }
     serveStatic(req, res, url.pathname);
   } catch (error) {
     if (error instanceof ApiError)
@@ -327,6 +352,7 @@ module.exports = {
   readJsonBody,
   server,
   validateContainerInput,
+  validateContainerId,
   validMagic,
   safeFileName,
 };
