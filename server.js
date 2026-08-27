@@ -9,6 +9,7 @@ const { DockerEngine, DockerEngineError } = require("./docker-engine");
 const PORT = Number(process.env.PORT || 8081),
   HOST = process.env.HOST || "127.0.0.1",
   root = __dirname,
+  staticRoot = path.join(root, "frontend", "dist"),
   uploadDir = path.join(root, "uploads", "images"),
   pool = new Pool(),
   docker = new DockerEngine();
@@ -242,11 +243,15 @@ function uploadImage(req) {
   });
 }
 function serveStatic(req, res, pathname) {
+  if (!fs.existsSync(staticRoot)) {
+    sendError(res, 503, "FRONTEND_NOT_BUILT", "React 화면을 먼저 빌드하세요: npm run build");
+    return;
+  }
   const requested = pathname === "/" ? "/index.html" : pathname,
-    filePath = path.resolve(root, `.${requested}`);
+    filePath = path.resolve(staticRoot, `.${requested}`);
   if (
     pathname.startsWith("/uploads/") ||
-    !filePath.startsWith(root) ||
+    !filePath.startsWith(staticRoot) ||
     !fs.existsSync(filePath) ||
     fs.statSync(filePath).isDirectory()
   ) {
@@ -258,6 +263,7 @@ function serveStatic(req, res, pathname) {
     ".html": "text/html",
     ".css": "text/css",
     ".js": "text/javascript",
+    ".svg": "image/svg+xml",
   };
   const content = fs.readFileSync(filePath);
   res.writeHead(200, {

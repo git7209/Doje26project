@@ -6,14 +6,25 @@ Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 
 
 1. Docker Engine을 실행합니다.
 2. `.env.example`을 `.env`로 복사합니다.
-3. `npm start`를 실행합니다.
-4. `http://localhost:8081`을 엽니다.
+3. Windows PowerShell에서 `npm run build`로 React 화면을 빌드합니다.
+4. WSL에서 `npm start`를 실행합니다.
+5. `http://localhost:8081`을 엽니다.
 
 현재 Windows 환경에서는 Docker Engine이 Ubuntu WSL2 안에 설치되어 있으므로 다음
 명령으로 서버를 실행합니다.
 
 ```powershell
+npm run build
 wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/deok7/LxcProgramMade && /usr/bin/npm start"
+```
+
+React 화면만 개발할 때는 백엔드를 실행한 상태에서 별도 PowerShell을 열고 다음을
+사용합니다. 개발 화면은 `http://localhost:5173`이며 `/api` 요청은 8081 백엔드로
+자동 전달됩니다.
+
+```powershell
+cd frontend
+npm run dev
 ```
 
 VS Code Live Server의 `http://localhost:5500`으로 열면 상대 경로 `/api` 요청도

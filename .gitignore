@@ -23,6 +23,8 @@ pnpm-debug.log*
 
 # Build, cache, and test output
 dist/
+!frontend/dist/
+!frontend/dist/**
 build/
 coverage/
 .cache/
