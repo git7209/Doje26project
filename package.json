@@ -4,6 +4,6 @@
   "private": true,
   "description": "LXC 컨테이너 관리 대시보드",
   "main": "server.js",
-  "scripts": {"start": "node server.js", "dev": "node --watch server.js", "check": "node --check server.js && node --check script.js && node --check docker-engine.js", "test": "node --test"},
+  "scripts": {"start": "node server.js", "dev": "node --watch server.js", "build": "npm --prefix frontend run build", "check": "node --check server.js && node --check docker-engine.js && npm --prefix frontend run build", "test": "node --test"},
   "dependencies": {"dotenv": "^16.6.1", "pg": "^8.16.3"}
 }
