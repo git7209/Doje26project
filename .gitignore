@@ -52,3 +52,5 @@ Desktop.ini
 
 # Uploaded custom container images
 uploads/images/*
+.vercel
+.env*

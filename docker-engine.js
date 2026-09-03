@@ -75,6 +75,13 @@ function resourceUsage(stats) {
   };
 }
 
+function isShellOnlyImage(config = {}) {
+  if (Array.isArray(config.Entrypoint) && config.Entrypoint.length) return false;
+  if (!Array.isArray(config.Cmd) || config.Cmd.length !== 1) return false;
+  const command = config.Cmd[0].split("/").pop();
+  return new Set(["sh", "ash", "bash", "zsh"]).has(command);
+}
+
 class DockerEngine {
   constructor(options = {}) {
     this.socketPath = options.socketPath || socketPathFromEnvironment();
@@ -189,6 +196,116 @@ class DockerEngine {
     }));
   }
 
+  async listNetworks() {
+    const rows = (await this.apiRequest("GET", "/networks")) || [];
+    return rows.map((row) => ({
+      id: row.Id,
+      name: row.Name,
+      driver: row.Driver || "-",
+      scope: row.Scope || "local",
+      internal: Boolean(row.Internal),
+      subnet: row.IPAM?.Config?.map((item) => item.Subnet).filter(Boolean).join(", ") || "-",
+      gateway: row.IPAM?.Config?.map((item) => item.Gateway).filter(Boolean).join(", ") || "-",
+      createdAt: row.Created || null,
+      containers: Object.values(row.Containers || {}).map((container) => ({
+        id: container.Name ? container.Name.replace(/^\//, "") : container.EndpointID,
+        name: container.Name ? container.Name.replace(/^\//, "") : container.EndpointID,
+        ipv4: container.IPv4Address || "-",
+        mac: container.MacAddress || "-",
+      })),
+    }));
+  }
+
+  async createNetwork(input) {
+    const result = await this.apiRequest("POST", "/networks/create", {
+      Name: input.name,
+      Driver: input.driver || "bridge",
+      Internal: Boolean(input.internal),
+      CheckDuplicate: true,
+    });
+    return { id: result.Id, name: input.name, warning: result.Warning || "" };
+  }
+
+  async inspectNetwork(id) {
+    const row = await this.apiRequest("GET", `/networks/${encodeURIComponent(id)}`);
+    return {
+      id: row.Id,
+      name: row.Name,
+      driver: row.Driver || "-",
+      scope: row.Scope || "local",
+      internal: Boolean(row.Internal),
+      createdAt: row.Created || null,
+      subnet: row.IPAM?.Config?.map((item) => item.Subnet).filter(Boolean).join(", ") || "-",
+      gateway: row.IPAM?.Config?.map((item) => item.Gateway).filter(Boolean).join(", ") || "-",
+      containers: Object.values(row.Containers || {}).map((container) => ({
+        id: container.Name ? container.Name.replace(/^\//, "") : container.EndpointID,
+        name: container.Name ? container.Name.replace(/^\//, "") : container.EndpointID,
+        ipv4: container.IPv4Address || "-",
+        mac: container.MacAddress || "-",
+      })),
+    };
+  }
+
+  async removeNetwork(id) {
+    await this.apiRequest("DELETE", `/networks/${encodeURIComponent(id)}`);
+    return { id, action: "delete" };
+  }
+
+  async connectNetwork(networkId, containerId) {
+    await this.apiRequest("POST", `/networks/${encodeURIComponent(networkId)}/connect`, { Container: containerId });
+    return { networkId, containerId, action: "connect" };
+  }
+
+  async disconnectNetwork(networkId, containerId) {
+    await this.apiRequest("POST", `/networks/${encodeURIComponent(networkId)}/disconnect`, { Container: containerId, Force: false });
+    return { networkId, containerId, action: "disconnect" };
+  }
+
+  async listVolumes() {
+    const [data, containers, diskUsage] = await Promise.all([
+      this.apiRequest("GET", "/volumes").then((value) => value || {}),
+      this.apiRequest("GET", "/containers/json?all=true").then((value) => value || []),
+      this.apiRequest("GET", "/system/df").catch(() => ({ Volumes: [] })),
+    ]);
+    const usageByName = new Map(
+      (diskUsage.Volumes || []).map((volume) => [volume.Name, volume.UsageData || {}]),
+    );
+    const containersByVolume = new Map();
+    for (const container of containers) {
+      const containerName = (container.Names?.[0] || container.Id?.slice(0, 12) || "-")
+        .replace(/^\//, "");
+      for (const mount of container.Mounts || []) {
+        if (mount.Type !== "volume" || !mount.Name) continue;
+        const names = containersByVolume.get(mount.Name) || [];
+        if (!names.includes(containerName)) names.push(containerName);
+        containersByVolume.set(mount.Name, names);
+      }
+    }
+    return (data.Volumes || []).map((row) => ({
+      name: row.Name,
+      driver: row.Driver || "local",
+      scope: row.Scope || "local",
+      mountpoint: row.Mountpoint || "-",
+      createdAt: row.CreatedAt || null,
+      sizeBytes: Math.max(0, Number(usageByName.get(row.Name)?.Size) || 0),
+      refCount: Math.max(0, Number(usageByName.get(row.Name)?.RefCount) || 0),
+      containers: containersByVolume.get(row.Name) || [],
+    }));
+  }
+
+  async createVolume(input) {
+    const volume = await this.apiRequest("POST", "/volumes/create", {
+      Name: input.name,
+      Driver: input.driver || "local",
+    });
+    return { name: volume.Name, driver: volume.Driver || "local" };
+  }
+
+  async removeVolume(name) {
+    await this.apiRequest("DELETE", `/volumes/${encodeURIComponent(name)}?force=false`);
+    return { name, action: "delete" };
+  }
+
   async containerStats(id) {
     const stats = await this.apiRequest(
       "GET",
@@ -213,19 +330,40 @@ class DockerEngine {
   }
 
   async createContainer(input) {
+    const image = await this.apiRequest(
+      "GET",
+      `/images/${encodeURIComponent(input.image)}/json`,
+    );
     const { exposed, bindings } = parsePorts(input.ports);
     const hostConfig = { PortBindings: bindings };
     if (input.memoryMb > 0) hostConfig.Memory = input.memoryMb * 1024 * 1024;
     if (input.cpuLimit > 0) hostConfig.NanoCpus = input.cpuLimit * 1_000_000_000;
+    if (input.volumeMounts?.length) {
+      hostConfig.Mounts = input.volumeMounts.map((mount) => ({
+        Type: "volume",
+        Source: mount.volume,
+        Target: mount.target,
+        ReadOnly: Boolean(mount.readOnly),
+      }));
+    }
+    const terminalOptions = isShellOnlyImage(image?.Config)
+      ? { OpenStdin: true, Tty: true }
+      : {};
     const created = await this.apiRequest(
       "POST",
       `/containers/create?name=${encodeURIComponent(input.name)}`,
-      { Image: input.image, ExposedPorts: exposed, HostConfig: hostConfig },
+      {
+        Image: input.image,
+        ExposedPorts: exposed,
+        HostConfig: hostConfig,
+        ...terminalOptions,
+      },
     );
+    await this.containerAction(created.Id, "start");
     return {
       id: created.Id,
       name: input.name,
-      status: "stopped",
+      status: "running",
       image: input.image,
       ports: input.ports,
       cpuLimit: input.cpuLimit,
@@ -240,6 +378,7 @@ module.exports = {
   DockerEngineError,
   imageLabel,
   imageVersion,
+  isShellOnlyImage,
   parsePorts,
   resourceUsage,
   uptimeFromCreated,

@@ -42,7 +42,7 @@ function readJsonBody(req, max = 16384) {
           new ApiError(
             413,
             "PAYLOAD_TOO_LARGE",
-            "요청 본문은 16KB 이하여야 합니다.",
+            "?붿껌 蹂몃Ц? 16KB ?댄븯?ъ빞 ?⑸땲??",
           ),
         );
         return;
@@ -54,7 +54,7 @@ function readJsonBody(req, max = 16384) {
         resolve(JSON.parse(body));
       } catch {
         reject(
-          new ApiError(400, "INVALID_JSON", "올바른 JSON 요청이 아닙니다."),
+          new ApiError(400, "INVALID_JSON", "?щ컮瑜?JSON ?붿껌???꾨떃?덈떎."),
         );
       }
     });
@@ -67,28 +67,67 @@ function validateContainerInput(input) {
     image = typeof input?.image === "string" ? input.image.trim() : "",
     ports = typeof input?.ports === "string" ? input.ports.trim() : "",
     cpuLimit = input?.cpuLimit ?? 0,
-    memoryMb = input?.memoryMb ?? 0;
+    memoryMb = input?.memoryMb ?? 0,
+    volumeMounts = Array.isArray(input?.volumeMounts) ? input.volumeMounts : [];
   if (!/^[a-z0-9](?:[a-z0-9-]{0,9}[a-z0-9])?$/.test(name))
-    fields.name = "이름 형식을 확인하세요.";
+    fields.name = "?대쫫 ?뺤떇???뺤씤?섏꽭??";
   if (!image || image.length > 255)
-    fields.image = "올바른 이미지를 선택하세요.";
-  if (ports.length > 255) fields.ports = "포트 정보는 255자 이하여야 합니다.";
+    fields.image = "?щ컮瑜??대?吏瑜??좏깮?섏꽭??";
+  if (ports.length > 255) fields.ports = "?ы듃 ?뺣낫??255???댄븯?ъ빞 ?⑸땲??";
   if (!Number.isSafeInteger(cpuLimit) || cpuLimit < 0)
-    fields.cpuLimit = "CPU 제한은 0 이상의 정수여야 합니다.";
+    fields.cpuLimit = "CPU ?쒗븳? 0 ?댁긽???뺤닔?ъ빞 ?⑸땲??";
   if (!Number.isSafeInteger(memoryMb) || memoryMb < 0 || memoryMb > 2147483647)
-    fields.memoryMb = "메모리 제한 값을 확인하세요.";
+    fields.memoryMb = "硫붾え由??쒗븳 媛믪쓣 ?뺤씤?섏꽭??";
+  if (volumeMounts.length > 8)
+    fields.volumeMounts = "蹂쇰ⅷ? 理쒕? 8媛쒓퉴吏 ?곌껐?????덉뒿?덈떎.";
+  const normalizedMounts = volumeMounts.map((mount) => ({
+    volume: typeof mount?.volume === "string" ? mount.volume.trim() : "",
+    target: typeof mount?.target === "string" ? mount.target.trim() : "",
+    readOnly: Boolean(mount?.readOnly),
+  }));
+  if (normalizedMounts.some((mount) =>
+    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(mount.volume) ||
+    !/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^:\0]+$/.test(mount.target)
+  )) fields.volumeMounts = "蹂쇰ⅷ ?대쫫怨??덈? 留덉슫??寃쎈줈瑜??뺤씤?섏꽭??";
   if (Object.keys(fields).length)
     throw new ApiError(
       400,
       "VALIDATION_FAILED",
-      "입력값을 확인하세요.",
+      "?낅젰媛믪쓣 ?뺤씤?섏꽭??",
       fields,
     );
-  return { name, image, ports, cpuLimit, memoryMb };
+  return { name, image, ports, cpuLimit, memoryMb, volumeMounts: normalizedMounts };
+}
+function validateVolumeName(value) {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name))
+    throw new ApiError(
+      400,
+      "INVALID_VOLUME_NAME",
+      "蹂쇰ⅷ ?대쫫? ?곷Ц, ?レ옄, ?? 諛묒쨪, ?섏씠?덈쭔 ?ъ슜?????덉뒿?덈떎.",
+      { name: "?щ컮瑜?蹂쇰ⅷ ?대쫫???낅젰?섏꽭??" },
+    );
+  return name;
+}
+function validateNetworkName(value) {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(name))
+    throw new ApiError(
+      400,
+      "INVALID_NETWORK_NAME",
+      "?ㅽ듃?뚰겕 ?대쫫? ?곷Ц, ?レ옄, ?? 諛묒쨪, ?섏씠?덈쭔 ?ъ슜?????덉뒿?덈떎.",
+      { name: "1~63?먯쓽 ?щ컮瑜??ㅽ듃?뚰겕 ?대쫫???낅젰?섏꽭??" },
+    );
+  return name;
+}
+function validateNetworkId(value) {
+  if (!/^[a-fA-F0-9]{12,64}$/.test(value || ""))
+    throw new ApiError(400, "INVALID_NETWORK_ID", "?щ컮瑜댁? ?딆? ?ㅽ듃?뚰겕 ID?낅땲??");
+  return value;
 }
 function validateContainerId(value) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value || ""))
-    throw new ApiError(400, "INVALID_CONTAINER_ID", "올바르지 않은 컨테이너 ID입니다.");
+    throw new ApiError(400, "INVALID_CONTAINER_ID", "?щ컮瑜댁? ?딆? 而⑦뀒?대꼫 ID?낅땲??");
   return value;
 }
 async function createContainer(input, database = pool) {
@@ -104,8 +143,8 @@ async function createContainer(input, database = pool) {
       throw new ApiError(
         409,
         "CONTAINER_NAME_CONFLICT",
-        "이미 사용 중인 컨테이너 이름입니다.",
-        { name: "이미 사용 중인 이름입니다." },
+        "?대? ?ъ슜 以묒씤 而⑦뀒?대꼫 ?대쫫?낅땲??",
+        { name: "?대? ?ъ슜 以묒씤 ?대쫫?낅땲??" },
       );
     throw error;
   }
@@ -152,7 +191,7 @@ function safeFileName(value) {
     throw new ApiError(
       400,
       "INVALID_IMAGE_TYPE",
-      "지원하지 않는 이미지 형식입니다.",
+      "吏?먰븯吏 ?딅뒗 ?대?吏 ?뺤떇?낅땲??",
     );
   return base;
 }
@@ -194,7 +233,7 @@ function uploadImage(req) {
           new ApiError(
             413,
             "IMAGE_TOO_LARGE",
-            "이미지 파일은 512MB 이하여야 합니다.",
+            "?대?吏 ?뚯씪? 512MB ?댄븯?ъ빞 ?⑸땲??",
           ),
         );
         req.destroy();
@@ -213,7 +252,7 @@ function uploadImage(req) {
           new ApiError(
             400,
             "INVALID_IMAGE_CONTENT",
-            "파일 헤더 검사에 실패했습니다. 올바른 이미지인지 확인하세요.",
+            "?뚯씪 ?ㅻ뜑 寃?ъ뿉 ?ㅽ뙣?덉뒿?덈떎. ?щ컮瑜??대?吏?몄? ?뺤씤?섏꽭??",
           ),
         );
         return;
@@ -244,7 +283,7 @@ function uploadImage(req) {
 }
 function serveStatic(req, res, pathname) {
   if (!fs.existsSync(staticRoot)) {
-    sendError(res, 503, "FRONTEND_NOT_BUILT", "React 화면을 먼저 빌드하세요: npm run build");
+    sendError(res, 503, "FRONTEND_NOT_BUILT", "React ?붾㈃??癒쇱? 鍮뚮뱶?섏꽭?? npm run build");
     return;
   }
   const requested = pathname === "/" ? "/index.html" : pathname,
@@ -294,7 +333,7 @@ const server = http.createServer(async (req, res) => {
         throw new ApiError(
           415,
           "UNSUPPORTED_MEDIA_TYPE",
-          "이미지는 application/octet-stream 형식이어야 합니다.",
+          "?대?吏??application/octet-stream ?뺤떇?댁뼱???⑸땲??",
         );
       sendJson(res, 201, { ok: true, image: await uploadImage(req) });
       return;
@@ -303,12 +342,71 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, await getDockerDashboard());
       return;
     }
+    if (url.pathname === "/api/networks" && req.method === "GET") {
+      sendJson(res, 200, { ok: true, networks: await docker.listNetworks() });
+      return;
+    }
+    if (url.pathname === "/api/networks" && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type? application/json?댁뼱???⑸땲??");
+      const body = await readJsonBody(req);
+      const name = validateNetworkName(body?.name);
+      const driver = typeof body?.driver === "string" ? body.driver.trim() : "bridge";
+      if (!["bridge", "overlay", "macvlan"].includes(driver))
+        throw new ApiError(400, "UNSUPPORTED_NETWORK_DRIVER", "吏?먰븯???ㅽ듃?뚰겕 ?쒕씪?대쾭??bridge, overlay, macvlan?낅땲??");
+      sendJson(res, 201, { ok: true, network: await docker.createNetwork({ name, driver, internal: Boolean(body?.internal) }) });
+      return;
+    }
+    const networkMatch = url.pathname.match(/^\/api\/networks\/([^/]+)$/);
+    if (networkMatch && req.method === "GET") {
+      sendJson(res, 200, { ok: true, network: await docker.inspectNetwork(validateNetworkId(decodeURIComponent(networkMatch[1]))) });
+      return;
+    }
+    if (networkMatch && req.method === "DELETE") {
+      const id = validateNetworkId(decodeURIComponent(networkMatch[1]));
+      const network = await docker.inspectNetwork(id);
+      if (["bridge", "host", "none"].includes(network.name))
+        throw new ApiError(409, "DEFAULT_NETWORK", "Docker 湲곕낯 ?ㅽ듃?뚰겕????젣?????놁뒿?덈떎.");
+      if (network.containers.length)
+        throw new ApiError(409, "NETWORK_IN_USE", "而⑦뀒?대꼫媛 ?곌껐???ㅽ듃?뚰겕????젣?????놁뒿?덈떎.");
+      sendJson(res, 200, { ok: true, result: await docker.removeNetwork(id) });
+      return;
+    }
+    const networkActionMatch = url.pathname.match(/^\/api\/networks\/([^/]+)\/(connect|disconnect)$/);
+    if (networkActionMatch && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type? application/json?댁뼱???⑸땲??");
+      const networkId = validateNetworkId(decodeURIComponent(networkActionMatch[1]));
+      const body = await readJsonBody(req);
+      const containerId = validateContainerId(typeof body?.containerId === "string" ? body.containerId.trim() : "");
+      const action = networkActionMatch[2] === "connect" ? "connectNetwork" : "disconnectNetwork";
+      sendJson(res, 200, { ok: true, result: await docker[action](networkId, containerId) });
+      return;
+    }
+    if (url.pathname === "/api/volumes" && req.method === "GET") {
+      sendJson(res, 200, { ok: true, volumes: await docker.listVolumes() });
+      return;
+    }
+    if (url.pathname === "/api/volumes" && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type? application/json?댁뼱???⑸땲??");
+      const body = await readJsonBody(req);
+      const input = { name: validateVolumeName(body?.name), driver: "local" };
+      sendJson(res, 201, { ok: true, volume: await docker.createVolume(input) });
+      return;
+    }
+    const volumeDeleteMatch = url.pathname.match(/^\/api\/volumes\/([^/]+)$/);
+    if (volumeDeleteMatch && req.method === "DELETE") {
+      const name = validateVolumeName(decodeURIComponent(volumeDeleteMatch[1]));
+      sendJson(res, 200, { ok: true, result: await docker.removeVolume(name) });
+      return;
+    }
     if (url.pathname === "/api/containers" && req.method === "POST") {
       if (!req.headers["content-type"]?.startsWith("application/json"))
         throw new ApiError(
           415,
           "UNSUPPORTED_MEDIA_TYPE",
-          "Content-Type은 application/json이어야 합니다.",
+          "Content-Type? application/json?댁뼱???⑸땲??",
         );
       const input = validateContainerInput(await readJsonBody(req));
       sendJson(res, 201, { ok: true, container: await docker.createContainer(input) });
@@ -344,7 +442,7 @@ const server = http.createServer(async (req, res) => {
     }
     else {
       console.error(error);
-      sendError(res, 503, "SERVER_ERROR", "요청을 처리하지 못했습니다.");
+      sendError(res, 503, "SERVER_ERROR", "?붿껌??泥섎━?섏? 紐삵뻽?듬땲??");
     }
   }
 });
@@ -361,6 +459,9 @@ module.exports = {
   server,
   validateContainerInput,
   validateContainerId,
+  validateVolumeName,
   validMagic,
   safeFileName,
 };
+
+
