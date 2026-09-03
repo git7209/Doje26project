@@ -5,6 +5,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+cloudflared/config.yml
+cloudflared/*.json
 *.pem
 *.key
 *.p12
@@ -52,3 +54,5 @@ Desktop.ini
 
 # Uploaded custom container images
 uploads/images/*
+.vercel
+.env*
