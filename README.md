@@ -1,6 +1,6 @@
-# LXC 컨테이너 관리 대시보드
+#  컨테이너 관리 대시보드
 
-Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 관리하는 프로젝트입니다.
+React 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 관리하는 프로젝트입니다.
 
 ## 실행 준비
 
@@ -15,7 +15,7 @@ Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 
 
 ```powershell
 npm run build
-wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/deok7/LxcProgramMade && /usr/bin/npm start"
+wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/(YourName)/LxcProgramMade && /usr/bin/npm start"
 ```
 
 React 화면만 개발할 때는 백엔드를 실행한 상태에서 별도 PowerShell을 열고 다음을
@@ -52,5 +52,4 @@ VS Code Live Server의 `http://localhost:5500`으로 열면 상대 경로 `/api`
 포트는 `8080:80` 또는 `5353:53/udp` 형식이며 여러 개는 쉼표로 구분합니다.
 보안을 위해 공개 포트는 기본적으로 `127.0.0.1`에만 바인딩됩니다.
 
-컨테이너 생성 후에는 자동으로 시작하지 않습니다. 실행 중인 컨테이너는 먼저
-중지해야 삭제할 수 있습니다. 대시보드를 새로 고칠 때 실제 Docker 통계를 조회합니다.
+실행 중인 컨테이너는 먼저 중지해야 삭제할 수 있습니다. 대시보드를 새로고침할 때 실제 Docker 통계를 조회합니다.
