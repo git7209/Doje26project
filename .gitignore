@@ -44,6 +44,11 @@ Desktop.ini
 *.dump
 *.bak
 *.backup
+tools/pg_hba.conf.reset-backup
+tools/pg_hba.conf.wsl-backup
+tools/postgres-reset-result.txt
+tools/postgres-wsl-result.txt
+tools/reset-postgres-password.ps1
 
 # Presentation tooling: temporary work and inspection output
 **/.pptx-build/
@@ -52,3 +57,5 @@ Desktop.ini
 
 # Uploaded custom container images
 uploads/images/*
+.vercel
+.env*
