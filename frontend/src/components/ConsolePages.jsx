@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { connectNetwork, createNetwork, createVolume, deleteNetwork, deleteVolume, disconnectNetwork, getNetwork } from "../api/dockerApi.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { connectNetwork, createNetwork, createVolume, deleteNetwork, deleteVolume, disconnectNetwork, getNetwork, runTerminalCommand } from "../api/dockerApi.js";
 
 const dateText = (value) => value ? new Date(value).toLocaleString("ko-KR") : "-";
 
@@ -236,4 +236,58 @@ export function SupportPage({ runtime, lastChecked, notify }) {
 export function ProfilePage({ profile, onProfileChange, notify }) {
   function save(event) { event.preventDefault(); onProfileChange(profile); notify("프로필을 저장했습니다."); }
   return <Page title="프로필" description="콘솔에 표시되는 계정 정보를 관리합니다."><form className="profile-card" onSubmit={save}><div className="profile-avatar">{profile.name.slice(0, 2).toUpperCase()}</div><div className="profile-fields"><label><span>표시 이름</span><input value={profile.name} onChange={(event) => onProfileChange({...profile, name: event.target.value}, false)} required /></label><label><span>이메일</span><input type="email" value={profile.email} onChange={(event) => onProfileChange({...profile, email: event.target.value}, false)} required /></label><label><span>역할</span><input value={profile.role} disabled /></label><button className="primary" type="submit">프로필 저장</button></div></form></Page>;
+}
+
+export function TerminalPage({ containers = [] }) {
+  const runningContainers = containers.filter((container) => container.status === "running");
+  const [containerId, setContainerId] = useState("");
+  const [command, setCommand] = useState("");
+  const [lines, setLines] = useState([]);
+  const [working, setWorking] = useState(false);
+  const inputRef = useRef(null);
+  const selectedId = runningContainers.some((container) => container.id === containerId)
+    ? containerId
+    : runningContainers[0]?.id || "";
+
+  async function execute(event) {
+    event.preventDefault();
+    const value = command.trim();
+    if (!value || working) return;
+    if (!selectedId) {
+      setLines((current) => [...current, { type: "command", text: `$ ${value}` }, { type: "error", text: "실행 중인 컨테이너가 없습니다. 컨테이너를 먼저 실행하세요." }]);
+      return;
+    }
+    setCommand("");
+    setWorking(true);
+    setLines((current) => [...current, { type: "command", text: `$ ${value}` }]);
+    try {
+      const result = await runTerminalCommand(selectedId, value);
+      setLines((current) => [...current, { type: "output", text: result.output || "(출력 없음)" }]);
+    } catch (error) {
+      setLines((current) => [...current, { type: "error", text: error.message }]);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return <Page title="터미널" description="실행 중인 컨테이너에서 셸 명령을 실행합니다.">
+    <section className="terminal-card">
+      <header>
+        <span className="terminal-target-label">컨테이너</span>
+        <div className="terminal-targets" aria-label="터미널 대상 컨테이너">
+          {!runningContainers.length && <span>실행 중인 컨테이너 없음</span>}
+          {runningContainers.map((container) => <button className={selectedId === container.id ? "active" : ""} type="button" key={container.id} onClick={() => { setContainerId(container.id); setLines([]); }} disabled={working}>{container.name}</button>)}
+        </div>
+        <button type="button" onClick={() => setLines([])} disabled={!lines.length || working}>화면 지우기</button>
+      </header>
+      <div className="terminal-output" role="log" aria-live="polite" onClick={() => inputRef.current?.focus()}>
+        {lines.length ? lines.map((line, index) => <pre className={line.type} key={`${index}-${line.text}`}>{line.text}</pre>) : <p>{runningContainers.length ? "명령어를 입력해 시작하세요." : "먼저 컨테이너를 실행하세요."}</p>}
+      </div>
+      <form onSubmit={execute}>
+        <span aria-hidden="true">$</span>
+        <input ref={inputRef} value={command} onChange={(event) => setCommand(event.target.value)} placeholder="예: ls -la" maxLength="1000" disabled={working} autoComplete="off" autoFocus aria-label="실행할 명령어" />
+        <button className="primary" type="submit" disabled={!command.trim() || working}>{working ? "실행 중" : "실행"}</button>
+      </form>
+    </section>
+  </Page>;
 }

@@ -324,6 +324,29 @@ class DockerEngine {
     return { id, action };
   }
 
+  async execCommand(id, command) {
+    const created = await this.apiRequest(
+      "POST",
+      `/containers/${encodeURIComponent(id)}/exec`,
+      {
+        AttachStdout: true,
+        AttachStderr: true,
+        Cmd: ["sh", "-lc", command],
+        Tty: true,
+      },
+    );
+    const output = await this.apiRequest(
+      "POST",
+      `/exec/${encodeURIComponent(created.Id)}/start`,
+      { Detach: false, Tty: true },
+    );
+    return {
+      output: typeof output === "string"
+        ? output
+        : output == null ? "" : JSON.stringify(output, null, 2),
+    };
+  }
+
   async removeContainer(id) {
     await this.apiRequest("DELETE", `/containers/${encodeURIComponent(id)}?v=true`);
     return { id, action: "delete" };

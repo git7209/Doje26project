@@ -13,8 +13,15 @@ const PORT = Number(process.env.PORT || 8081),
   uploadDir = path.join(root, "uploads", "images"),
   pool = new Pool(),
   docker = new DockerEngine();
-function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+const SESSION_COOKIE = "lxc_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+let authSchemaPromise;
+function sendJson(res, status, body, headers = {}) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    ...headers,
+  });
   res.end(JSON.stringify(body));
 }
 function sendError(res, status, code, message, fields) {
@@ -28,6 +35,100 @@ class ApiError extends Error {
     super(message);
     Object.assign(this, { status, code, fields });
   }
+}
+function ensureAuthSchema(database = pool) {
+  if (!authSchemaPromise) {
+    authSchemaPromise = database.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (LOWER(email));
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token_hash CHAR(64) PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS user_sessions_user_id_idx ON user_sessions (user_id);
+      CREATE INDEX IF NOT EXISTS user_sessions_expires_at_idx ON user_sessions (expires_at);
+    `).catch((error) => {
+      authSchemaPromise = null;
+      throw error;
+    });
+  }
+  return authSchemaPromise;
+}
+function normalizeEmail(value) {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw new ApiError(400, "VALIDATION_FAILED", "올바른 이메일 주소를 입력하세요.", { email: "이메일 형식을 확인하세요." });
+  return email;
+}
+function validateDisplayName(value) {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (name.length < 2 || name.length > 40)
+    throw new ApiError(400, "VALIDATION_FAILED", "이름은 2자 이상 40자 이하로 입력하세요.", { name: "이름은 2~40자여야 합니다." });
+  return name;
+}
+function validatePassword(value) {
+  if (typeof value !== "string" || value.length < 8 || value.length > 128 || Buffer.byteLength(value) > 256)
+    throw new ApiError(400, "VALIDATION_FAILED", "비밀번호는 8자 이상 128자 이하로 입력하세요.", { password: "비밀번호는 8~128자여야 합니다." });
+  return value;
+}
+function scryptPassword(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, key) => error ? reject(error) : resolve(key));
+  });
+}
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = await scryptPassword(password, salt);
+  return { salt, hash: hash.toString("hex") };
+}
+async function verifyPassword(password, salt, expectedHex) {
+  const actual = await scryptPassword(password, salt);
+  const expected = Buffer.from(expectedHex || "", "hex");
+  return expected.length === actual.length && crypto.timingSafeEqual(actual, expected);
+}
+function parseCookies(req) {
+  return Object.fromEntries((req.headers.cookie || "").split(";").flatMap((part) => {
+    const separator = part.indexOf("=");
+    if (separator < 1) return [];
+    return [[part.slice(0, separator).trim(), decodeURIComponent(part.slice(separator + 1).trim())]];
+  }));
+}
+function sessionTokenHash(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+function sessionCookie(token, maxAge = SESSION_MAX_AGE_SECONDS) {
+  const secure = process.env.AUTH_COOKIE_SECURE === "true" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
+}
+async function createSession(userId, database = pool) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  await database.query("DELETE FROM user_sessions WHERE expires_at<=NOW()");
+  await database.query(
+    "INSERT INTO user_sessions (token_hash,user_id,expires_at) VALUES ($1,$2,NOW() + INTERVAL '7 days')",
+    [sessionTokenHash(token), userId],
+  );
+  return token;
+}
+async function authenticatedUser(req, database = pool) {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (!token) return null;
+  const result = await database.query(
+    `SELECT u.id,u.display_name AS "name",u.email
+       FROM user_sessions s JOIN users u ON u.id=s.user_id
+      WHERE s.token_hash=$1 AND s.expires_at>NOW()`,
+    [sessionTokenHash(token)],
+  );
+  return result.rows[0] || null;
 }
 function readJsonBody(req, max = 16384) {
   return new Promise((resolve, reject) => {
@@ -314,6 +415,75 @@ function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
+    if (url.pathname === "/api/auth/signup" && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type은 application/json이어야 합니다.");
+      await ensureAuthSchema();
+      const body = await readJsonBody(req);
+      const name = validateDisplayName(body?.name);
+      const email = normalizeEmail(body?.email);
+      const password = validatePassword(body?.password);
+      const passwordData = await hashPassword(password);
+      let user;
+      try {
+        const result = await pool.query(
+          `INSERT INTO users (display_name,email,password_hash,password_salt)
+           VALUES ($1,$2,$3,$4) RETURNING id,display_name AS "name",email`,
+          [name, email, passwordData.hash, passwordData.salt],
+        );
+        user = result.rows[0];
+      } catch (error) {
+        if (error.code === "23505")
+          throw new ApiError(409, "EMAIL_ALREADY_EXISTS", "이미 가입된 이메일입니다.");
+        throw error;
+      }
+      const token = await createSession(user.id);
+      sendJson(res, 201, { ok: true, user }, { "Set-Cookie": sessionCookie(token) });
+      return;
+    }
+    if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type은 application/json이어야 합니다.");
+      await ensureAuthSchema();
+      const body = await readJsonBody(req);
+      const email = normalizeEmail(body?.email);
+      const password = validatePassword(body?.password);
+      const result = await pool.query(
+        `SELECT id,display_name AS "name",email,password_hash,password_salt
+           FROM users WHERE LOWER(email)=$1`,
+        [email],
+      );
+      const account = result.rows[0];
+      if (!account) {
+        await scryptPassword(password, "00000000000000000000000000000000");
+        throw new ApiError(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+      }
+      if (!(await verifyPassword(password, account.password_salt, account.password_hash)))
+        throw new ApiError(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+      const token = await createSession(account.id);
+      const user = { id: account.id, name: account.name, email: account.email };
+      sendJson(res, 200, { ok: true, user }, { "Set-Cookie": sessionCookie(token) });
+      return;
+    }
+    if (url.pathname === "/api/auth/session" && req.method === "GET") {
+      await ensureAuthSchema();
+      const user = await authenticatedUser(req);
+      sendJson(res, 200, { ok: true, user });
+      return;
+    }
+    if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+      await ensureAuthSchema();
+      const token = parseCookies(req)[SESSION_COOKIE];
+      if (token) await pool.query("DELETE FROM user_sessions WHERE token_hash=$1", [sessionTokenHash(token)]);
+      sendJson(res, 200, { ok: true }, { "Set-Cookie": sessionCookie("", 0) });
+      return;
+    }
+    if (url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
+      await ensureAuthSchema();
+      const user = await authenticatedUser(req);
+      if (!user) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
+      req.user = user;
+    }
     if (url.pathname === "/api/health") {
       await docker.ping();
       sendJson(res, 200, { ok: true, runtime: "docker" });
@@ -423,6 +593,18 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+    const terminalMatch = url.pathname.match(/^\/api\/containers\/([^/]+)\/exec$/);
+    if (terminalMatch && req.method === "POST") {
+      if (!req.headers["content-type"]?.startsWith("application/json"))
+        throw new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type은 application/json이어야 합니다.");
+      const id = validateContainerId(decodeURIComponent(terminalMatch[1]));
+      const body = await readJsonBody(req);
+      const command = typeof body?.command === "string" ? body.command.trim() : "";
+      if (!command || command.length > 1000)
+        throw new ApiError(400, "VALIDATION_FAILED", "명령어는 1자 이상 1000자 이하로 입력하세요.");
+      sendJson(res, 200, { ok: true, ...(await docker.execCommand(id, command)) });
+      return;
+    }
     const deleteMatch = url.pathname.match(/^\/api\/containers\/([^/]+)$/);
     if (deleteMatch && req.method === "DELETE") {
       const id = validateContainerId(decodeURIComponent(deleteMatch[1]));
@@ -440,6 +622,8 @@ const server = http.createServer(async (req, res) => {
       const status = error.status >= 400 && error.status < 500 ? error.status : 503;
       sendError(res, status, "DOCKER_ENGINE_ERROR", error.message);
     }
+    else if (["28P01", "3D000", "ECONNREFUSED"].includes(error.code))
+      sendError(res, 503, "DATABASE_UNAVAILABLE", "계정 데이터베이스에 연결할 수 없습니다. PostgreSQL 설정을 확인하세요.");
     else {
       console.error(error);
       sendError(res, 503, "SERVER_ERROR", "?붿껌??泥섎━?섏? 紐삵뻽?듬땲??");
@@ -462,6 +646,12 @@ module.exports = {
   validateVolumeName,
   validMagic,
   safeFileName,
+  normalizeEmail,
+  validateDisplayName,
+  validatePassword,
+  hashPassword,
+  verifyPassword,
+  sessionTokenHash,
 };
 
 

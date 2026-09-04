@@ -10,7 +10,7 @@ const {
   resourceUsage,
   uptimeFromCreated,
 } = require("../docker-engine");
-const { getDockerDashboard, validateContainerId, validateContainerInput, validateVolumeName } = require("../server");
+const { getDockerDashboard, hashPassword, normalizeEmail, sessionTokenHash, validateContainerId, validateContainerInput, validateDisplayName, validatePassword, validateVolumeName, verifyPassword } = require("../server");
 
 test("Docker 가상 네트워크 목록을 컨테이너 정보와 함께 변환한다", async () => {
   const engine = new DockerEngine({ apiVersion: "1.55" });
@@ -238,8 +238,42 @@ test("허용된 컨테이너 동작만 Engine API로 전송한다", async () => 
   await assert.rejects(() => engine.containerAction("web-01", "exec"), DockerEngineError);
 });
 
+test("터미널 명령을 Docker Exec API로 실행한다", async () => {
+  const engine = new DockerEngine({ apiVersion: "1.55" });
+  const calls = [];
+  engine.request = async (method, path, body) => {
+    calls.push({ method, path, body });
+    if (path.endsWith("/exec")) return { Id: "exec-01" };
+    return "hello\r\n";
+  };
+  assert.deepEqual(await engine.execCommand("web-01", "printf hello"), { output: "hello\r\n" });
+  assert.deepEqual(calls, [
+    { method: "POST", path: "/v1.55/containers/web-01/exec", body: { AttachStdout: true, AttachStderr: true, Cmd: ["sh", "-lc", "printf hello"], Tty: true } },
+    { method: "POST", path: "/v1.55/exec/exec-01/start", body: { Detach: false, Tty: true } },
+  ]);
+});
+
 test("컨테이너 ID와 이름 형식을 검증한다", () => {
   assert.equal(validateContainerId("web-01"), "web-01");
   assert.throws(() => validateContainerId("../docker.sock"));
   assert.throws(() => validateContainerId("bad/name"));
+});
+
+test("회원가입 입력값을 검증하고 이메일을 정규화한다", () => {
+  assert.equal(normalizeEmail("  USER@Example.COM "), "user@example.com");
+  assert.equal(validateDisplayName("사용자"), "사용자");
+  assert.equal(validatePassword("password123"), "password123");
+  assert.throws(() => normalizeEmail("invalid"));
+  assert.throws(() => validateDisplayName("a"));
+  assert.throws(() => validatePassword("short"));
+});
+
+test("비밀번호는 salt가 적용된 scrypt 해시로 검증한다", async () => {
+  const first = await hashPassword("password123");
+  const second = await hashPassword("password123");
+  assert.notEqual(first.salt, second.salt);
+  assert.notEqual(first.hash, second.hash);
+  assert.equal(await verifyPassword("password123", first.salt, first.hash), true);
+  assert.equal(await verifyPassword("wrong-password", first.salt, first.hash), false);
+  assert.equal(sessionTokenHash("token").length, 64);
 });

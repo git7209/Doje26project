@@ -13,6 +13,10 @@ const friendlyErrors = {
   INVALID_JSON: "입력 내용을 읽지 못했습니다. 다시 입력해 주세요.",
   VALIDATION_FAILED: "입력한 내용을 확인해 주세요.",
   UNSUPPORTED_MEDIA_TYPE: "지원하지 않는 요청 형식입니다.",
+  AUTH_REQUIRED: "로그인이 필요합니다.",
+  INVALID_CREDENTIALS: "이메일 또는 비밀번호가 올바르지 않습니다.",
+  EMAIL_ALREADY_EXISTS: "이미 가입된 이메일입니다.",
+  DATABASE_UNAVAILABLE: "계정 데이터베이스에 연결할 수 없습니다. PostgreSQL 설정을 확인해 주세요.",
 };
 
 async function request(path, options) {
@@ -96,6 +100,38 @@ export function createContainer(input) {
 export function runContainerAction(id, action) {
   return request(`/api/containers/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
+  });
+}
+
+export function getAuthSession() {
+  return request("/api/auth/session");
+}
+
+export function loginAccount(input) {
+  return request("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function createAccount(input) {
+  return request("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function logoutAccount() {
+  return request("/api/auth/logout", { method: "POST" });
+}
+
+export function runTerminalCommand(id, command) {
+  return request(`/api/containers/${encodeURIComponent(id)}/exec`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command }),
   });
 }
 

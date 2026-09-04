@@ -40,6 +40,14 @@ VS Code Live Server의 `http://localhost:5500`으로 열면 상대 경로 `/api`
 `//./pipe/docker_engine`입니다. 다른 로컬 소켓을 사용하면 `.env`의
 `DOCKER_SOCKET`에 경로를 지정합니다.
 
+## 로그인 데이터베이스
+
+회원 계정은 PostgreSQL의 `users` 테이블에, 로그인 세션은 `user_sessions`
+테이블에 저장됩니다. 서버가 첫 인증 요청을 받을 때 테이블을 자동으로 생성합니다.
+`.env`의 `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`를 실제
+PostgreSQL 접속 정보로 설정해야 합니다. HTTPS로 배포할 때는
+`AUTH_COOKIE_SECURE=true`로 설정하세요.
+
 ## 현재 Docker 연동 범위
 
 - 로컬 이미지 목록 조회
