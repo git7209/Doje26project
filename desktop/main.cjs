@@ -1,12 +1,17 @@
 const { app, BrowserWindow, dialog, session } = require("electron");
 const crypto = require("node:crypto");
 const path = require("node:path");
+const { registerTerminalIpc, sendTerminalEvent } = require("./ipc/register-terminal-ipc.cjs");
+const { DockerRuntimeDetector } = require("./runtime/detect-docker-runtime.cjs");
+const { PtyTransport } = require("./terminal/pty-transport.cjs");
+const { TerminalSessionManager } = require("./terminal/terminal-session-manager.cjs");
 
 const desktopToken = crypto.randomBytes(32).toString("base64url");
 const smokeTest = process.env.CONTAINER_CHECK_SMOKE_TEST === "1";
 let backendServer;
 let appOrigin;
 let mainWindow;
+let terminalManager;
 
 function startBackend() {
   process.env.CONTAINER_CHECK_DESKTOP_TOKEN = desktopToken;
@@ -50,6 +55,21 @@ function isAppUrl(value) {
   } catch {
     return false;
   }
+}
+
+function registerTerminalBridge() {
+  const detector = new DockerRuntimeDetector();
+  terminalManager = new TerminalSessionManager({
+    createTransport: async () => new PtyTransport({
+      runtime: await detector.detect(),
+      cwd: app.getPath("home"),
+    }),
+    sendEvent: sendTerminalEvent,
+  });
+  registerTerminalIpc({
+    manager: terminalManager,
+    isAllowedSender: (frame) => Boolean(frame && isAppUrl(frame.url)),
+  });
 }
 
 function createWindow() {
@@ -109,6 +129,7 @@ if (!hasLock) {
     try {
       await startBackend();
       registerRequestGuard();
+      registerTerminalBridge();
       createWindow();
     } catch (error) {
       dialog.showErrorBox(
@@ -128,6 +149,7 @@ if (!hasLock) {
   });
 
   app.on("before-quit", () => {
+    terminalManager?.closeAll("app_exit");
     void closeBackend();
   });
 }
