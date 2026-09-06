@@ -1,8 +1,10 @@
 const { app, BrowserWindow, dialog, session } = require("electron");
 const crypto = require("node:crypto");
 const path = require("node:path");
+const { DockerEngine } = require("../docker-engine");
 const { registerTerminalIpc, sendTerminalEvent } = require("./ipc/register-terminal-ipc.cjs");
 const { DockerRuntimeDetector } = require("./runtime/detect-docker-runtime.cjs");
+const { createWslDockerConnectionFactory } = require("./runtime/wsl-docker-socket.cjs");
 const { PtyTransport } = require("./terminal/pty-transport.cjs");
 const { TerminalSessionManager } = require("./terminal/terminal-session-manager.cjs");
 
@@ -12,12 +14,31 @@ let backendServer;
 let appOrigin;
 let mainWindow;
 let terminalManager;
+let selectedRuntime;
+const runtimeDetector = new DockerRuntimeDetector();
 
-function startBackend() {
+function engineForRuntime(runtime) {
+  if (runtime?.kind === "wsl") {
+    return new DockerEngine({
+      connectionFactory: createWslDockerConnectionFactory({ distro: runtime.distro }),
+      timeoutMs: 8000,
+    });
+  }
+  return new DockerEngine();
+}
+
+async function startBackend() {
   process.env.CONTAINER_CHECK_DESKTOP_TOKEN = desktopToken;
   process.env.CONTAINER_CHECK_DATA_DIR = app.getPath("userData");
 
-  ({ server: backendServer } = require("../server"));
+  const backend = require("../server");
+  try {
+    selectedRuntime = await runtimeDetector.detect();
+    backend.configureDockerRuntime(engineForRuntime(selectedRuntime), selectedRuntime.label);
+  } catch {
+    backend.configureDockerRuntime(engineForRuntime(null), "Docker Engine");
+  }
+  ({ server: backendServer } = backend);
   return new Promise((resolve, reject) => {
     const onError = (error) => {
       backendServer.off("listening", onListening);
@@ -58,10 +79,9 @@ function isAppUrl(value) {
 }
 
 function registerTerminalBridge() {
-  const detector = new DockerRuntimeDetector();
   terminalManager = new TerminalSessionManager({
     createTransport: async () => new PtyTransport({
-      runtime: await detector.detect(),
+      runtime: selectedRuntime || await runtimeDetector.detect(),
       cwd: app.getPath("home"),
     }),
     sendEvent: sendTerminalEvent,
@@ -99,7 +119,21 @@ function createWindow() {
     if (!smokeTest) mainWindow?.show();
   });
   if (smokeTest) {
-    mainWindow.webContents.once("did-finish-load", () => app.exit(0));
+    mainWindow.webContents.once("did-finish-load", async () => {
+      try {
+        const result = await mainWindow.webContents.executeJavaScript(
+          "fetch('/api/health').then(async (response) => ({ status: response.status, body: await response.json() }))",
+        );
+        if (result.status !== 200 || result.body?.ok !== true) {
+          throw new Error(`Backend health check failed (${result.status})`);
+        }
+        console.log(`Desktop smoke test passed (${result.body.runtime}).`);
+        app.exit(0);
+      } catch (error) {
+        console.error(`Desktop smoke test failed: ${error.message}`);
+        app.exit(1);
+      }
+    });
     mainWindow.webContents.once("did-fail-load", (_event, code, description) => {
       console.error(`Desktop smoke test failed (${code}): ${description}`);
       app.exit(1);

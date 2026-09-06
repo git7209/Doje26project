@@ -85,6 +85,9 @@ function isShellOnlyImage(config = {}) {
 class DockerEngine {
   constructor(options = {}) {
     this.socketPath = options.socketPath || socketPathFromEnvironment();
+    this.connectionFactory = options.connectionFactory || null;
+    this.agent = this.connectionFactory ? new http.Agent({ keepAlive: false }) : null;
+    if (this.agent) this.agent.createConnection = this.connectionFactory;
     this.timeoutMs = options.timeoutMs || 5000;
     this.apiVersion = options.apiVersion || null;
     this.versionPromise = null;
@@ -106,16 +109,22 @@ class DockerEngine {
   request(method, pathname, body) {
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
     return new Promise((resolve, reject) => {
+      const requestOptions = {
+        path: pathname,
+        method,
+        headers: payload
+          ? { "Content-Type": "application/json", "Content-Length": payload.length }
+          : {},
+        timeout: this.timeoutMs,
+      };
+      if (this.connectionFactory) {
+        requestOptions.agent = this.agent;
+        requestOptions.host = "docker.local";
+      } else {
+        requestOptions.socketPath = this.socketPath;
+      }
       const req = http.request(
-        {
-          socketPath: this.socketPath,
-          path: pathname,
-          method,
-          headers: payload
-            ? { "Content-Type": "application/json", "Content-Length": payload.length }
-            : {},
-          timeout: this.timeoutMs,
-        },
+        requestOptions,
         (res) => {
           const chunks = [];
           res.on("data", (chunk) => chunks.push(chunk));

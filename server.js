@@ -12,8 +12,17 @@ const PORT = Number(process.env.PORT || 8081),
   staticRoot = path.join(root, "frontend", "dist"),
   dataRoot = process.env.CONTAINER_CHECK_DATA_DIR || root,
   uploadDir = path.join(dataRoot, "uploads", "images"),
-  pool = new Pool(),
-  docker = new DockerEngine();
+  pool = new Pool();
+let docker = new DockerEngine();
+let dockerRuntimeLabel = "docker";
+
+function configureDockerRuntime(engine, label = "docker") {
+  if (!engine || typeof engine.ping !== "function") {
+    throw new TypeError("Docker Engine 인스턴스가 필요합니다.");
+  }
+  docker = engine;
+  dockerRuntimeLabel = label;
+}
 function sendJson(res, status, body, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -171,11 +180,11 @@ async function getDashboard(database = pool) {
     },
   };
 }
-async function getDockerDashboard(engine = docker) {
+async function getDockerDashboard(engine = docker, runtime = dockerRuntimeLabel) {
   const containers = await engine.listContainers();
   return {
     ok: true,
-    runtime: "docker",
+    runtime,
     containers,
     summary: {
       total: containers.length,
@@ -334,7 +343,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/health") {
       await docker.ping();
-      sendJson(res, 200, { ok: true, runtime: "docker" });
+      sendJson(res, 200, { ok: true, runtime: dockerRuntimeLabel });
       return;
     }
     if (url.pathname === "/api/images" && req.method === "GET") {
@@ -482,6 +491,7 @@ if (require.main === module)
   );
 module.exports = {
   ApiError,
+  configureDockerRuntime,
   createContainer,
   getDashboard,
   getDockerDashboard,

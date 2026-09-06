@@ -181,7 +181,7 @@ test("생성 입력의 자원 제한을 Docker 요청으로 전달한다", async
   assert.equal(result.status, "running");
 });
 
-test("대시보드 요약은 Docker 상태를 기준으로 계산한다", async () => {
+test("대시보드 요약은 Docker 상태와 선택된 런타임을 기준으로 계산한다", async () => {
   const result = await getDockerDashboard({
     listContainers: async () => [
       { status: "running" },
@@ -189,7 +189,8 @@ test("대시보드 요약은 Docker 상태를 기준으로 계산한다", async 
       { status: "paused" },
       { status: "dead" },
     ],
-  });
+  }, "WSL · Ubuntu");
+  assert.equal(result.runtime, "WSL · Ubuntu");
   assert.deepEqual(result.summary, {
     total: 4,
     running: 1,

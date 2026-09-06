@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const { PassThrough } = require("node:stream");
 const test = require("node:test");
 
 const {
@@ -7,6 +8,10 @@ const {
   decodeCommandOutput,
   orderedDistros,
 } = require("../desktop/runtime/detect-docker-runtime.cjs");
+const {
+  createWslDockerSocket,
+  validateDistro,
+} = require("../desktop/runtime/wsl-docker-socket.cjs");
 const {
   createPtyCommand,
   PtyTransport,
@@ -99,6 +104,63 @@ test("native Docker가 없으면 Docker가 실행 중인 WSL 배포판을 선택
   assert.equal(runtime.kind, "wsl");
   assert.equal(runtime.distro, "Debian");
   assert.deepEqual(calls.at(-1)[1].slice(0, 3), ["-d", "Debian", "--"]);
+});
+
+test("Windows 앱은 기본적으로 WSL Docker를 네이티브 엔진보다 먼저 선택한다", async () => {
+  const calls = [];
+  const detector = new DockerRuntimeDetector({
+    platform: "win32",
+    run: async (executable, args) => {
+      calls.push([executable, args]);
+      if (executable === "docker.exe") return "28.0.0";
+      if (args[0] === "--list") return "Ubuntu";
+      return "27.0.0";
+    },
+  });
+
+  const runtime = await detector.detect();
+  assert.equal(runtime.kind, "wsl");
+  assert.equal(runtime.distro, "Ubuntu");
+  assert.equal(calls.some(([executable]) => executable === "docker.exe"), false);
+});
+
+test("WSL Docker 소켓은 셸 없이 고정 인자로 프록시를 열고 데스크톱 토큰을 제거한다", async () => {
+  const child = new EventEmitter();
+  Object.assign(child, {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    exitCode: null,
+    killed: false,
+    kill() { this.killed = true; },
+  });
+  child.stdin.on("error", () => {});
+  child.stdout.on("error", () => {});
+  child.stderr.on("error", () => {});
+  let invocation;
+  const previousToken = process.env.CONTAINER_CHECK_DESKTOP_TOKEN;
+  process.env.CONTAINER_CHECK_DESKTOP_TOKEN = "do-not-forward";
+  try {
+    const socket = createWslDockerSocket({
+      distro: "Ubuntu",
+      spawnProcess: (executable, args, options) => {
+        invocation = { executable, args, options };
+        return child;
+      },
+    });
+    assert.equal(invocation.executable, "wsl.exe");
+    assert.deepEqual(invocation.args, ["-d", "Ubuntu", "--", "docker", "system", "dial-stdio"]);
+    assert.equal(invocation.options.env.CONTAINER_CHECK_DESKTOP_TOKEN, undefined);
+    socket.on("error", () => {});
+    const closed = new Promise((resolve) => socket.once("close", resolve));
+    socket.destroy();
+    await closed;
+  } finally {
+    if (previousToken === undefined) delete process.env.CONTAINER_CHECK_DESKTOP_TOKEN;
+    else process.env.CONTAINER_CHECK_DESKTOP_TOKEN = previousToken;
+  }
+  assert.equal(child.killed, true);
+  assert.throws(() => validateDistro("bad\nname"));
 });
 
 test("터미널 크기 범위를 검증한다", () => {
