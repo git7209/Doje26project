@@ -10,7 +10,8 @@ const PORT = Number(process.env.PORT || 8081),
   HOST = process.env.HOST || "127.0.0.1",
   root = __dirname,
   staticRoot = path.join(root, "frontend", "dist"),
-  uploadDir = path.join(root, "uploads", "images"),
+  dataRoot = process.env.CONTAINER_CHECK_DATA_DIR || root,
+  uploadDir = path.join(dataRoot, "uploads", "images"),
   pool = new Pool(),
   docker = new DockerEngine();
 function sendJson(res, status, body, headers = {}) {
@@ -307,10 +308,17 @@ function serveStatic(req, res, pathname) {
     ".css": "text/css",
     ".js": "text/javascript",
     ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
   };
   const content = fs.readFileSync(filePath);
+  const type = types[path.extname(filePath)] || "application/octet-stream";
   res.writeHead(200, {
-    "Content-Type": `${types[path.extname(filePath)] || "application/octet-stream"}; charset=utf-8`,
+    "Content-Type": /^(?:text\/|application\/(?:json|javascript))/.test(type)
+      ? `${type}; charset=utf-8`
+      : type,
     "Content-Length": content.length,
   });
   res.end(content);
@@ -318,6 +326,12 @@ function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
+    const desktopToken = process.env.CONTAINER_CHECK_DESKTOP_TOKEN;
+    if (desktopToken && url.pathname.startsWith("/api/") &&
+        req.headers["x-container-check-token"] !== desktopToken) {
+      sendError(res, 403, "DESKTOP_AUTH_REQUIRED", "허용되지 않은 앱 요청입니다.");
+      return;
+    }
     if (url.pathname === "/api/health") {
       await docker.ping();
       sendJson(res, 200, { ok: true, runtime: "docker" });
