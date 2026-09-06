@@ -1,4 +1,5 @@
 import DashboardMetrics from "./DashboardMetrics.jsx";
+import UiIcon from "./UiIcon.jsx";
 
 const statusLabels = {
   running: "실행 중",
@@ -8,7 +9,7 @@ const statusLabels = {
   dead: "오류",
 };
 
-const ShortcutIcon = ({ children }) => <span className="shortcut-icon" aria-hidden="true">{children}</span>;
+const ShortcutIcon = ({ name }) => <span className="shortcut-icon" aria-hidden="true"><UiIcon name={name} /></span>;
 
 export default function HomeOverview({
   dashboard,
@@ -29,9 +30,9 @@ export default function HomeOverview({
   const initialLoading = loading && lastChecked === "확인 전";
   const customNetworkCount = (networks || []).filter((item) => !["bridge", "host", "none"].includes(item.name)).length;
   const inventory = [
-    { id: "images", label: "이미지", value: images?.length || 0, detail: "컨테이너 생성 소스", icon: "◇" },
-    { id: "storage", label: "볼륨", value: volumes?.length || 0, detail: "영구 데이터 저장소", icon: "▱" },
-    { id: "networks", label: "네트워크", value: customNetworkCount, detail: "사용자 정의 네트워크", icon: "⌘" },
+    { id: "images", label: "이미지", value: images?.length || 0, detail: "컨테이너 생성 소스", icon: "image" },
+    { id: "storage", label: "볼륨", value: volumes?.length || 0, detail: "영구 데이터 저장소", icon: "storage" },
+    { id: "networks", label: "네트워크", value: customNetworkCount, detail: "사용자 정의 네트워크", icon: "network" },
   ];
 
   return (
@@ -62,16 +63,16 @@ export default function HomeOverview({
           <header><div><h2>빠른 작업</h2><p>자주 사용하는 관리 화면으로 바로 이동합니다.</p></div></header>
           <div className="quick-action-list">
             <button type="button" className="quick-action primary-quick-action" onClick={onCreate}>
-              <ShortcutIcon>＋</ShortcutIcon><span><strong>새 컨테이너</strong><small>이미지와 리소스를 선택해 생성</small></span><b aria-hidden="true">›</b>
+              <ShortcutIcon name="add" /><span><strong>새 컨테이너</strong><small>이미지와 리소스를 선택해 생성</small></span><b aria-hidden="true">›</b>
             </button>
             <button type="button" className="quick-action" onClick={() => onNavigate("containers")}>
-              <ShortcutIcon>▣</ShortcutIcon><span><strong>컨테이너 관리</strong><small>시작·중지·재시작 및 삭제</small></span><b aria-hidden="true">›</b>
+              <ShortcutIcon name="container" /><span><strong>컨테이너 관리</strong><small>시작·중지·재시작 및 삭제</small></span><b aria-hidden="true">›</b>
             </button>
             <button type="button" className="quick-action" onClick={() => onNavigate("images")}>
-              <ShortcutIcon>◇</ShortcutIcon><span><strong>이미지 확인</strong><small>사용 가능한 이미지 살펴보기</small></span><b aria-hidden="true">›</b>
+              <ShortcutIcon name="image" /><span><strong>이미지 확인</strong><small>사용 가능한 이미지 살펴보기</small></span><b aria-hidden="true">›</b>
             </button>
             <button type="button" className="quick-action" onClick={() => onNavigate("terminal")}>
-              <ShortcutIcon>&gt;_</ShortcutIcon><span><strong>터미널 열기</strong><small>실행 중인 컨테이너에 명령 실행</small></span><b aria-hidden="true">›</b>
+              <ShortcutIcon name="terminal" /><span><strong>터미널 열기</strong><small>실행 중인 컨테이너에 명령 실행</small></span><b aria-hidden="true">›</b>
             </button>
           </div>
         </article>
@@ -81,7 +82,7 @@ export default function HomeOverview({
           <div className="inventory-list">
             {inventory.map((item) => (
               <button type="button" key={item.id} onClick={() => onNavigate(item.id)}>
-                <span className="inventory-icon" aria-hidden="true">{item.icon}</span>
+                <span className="inventory-icon" aria-hidden="true"><UiIcon name={item.icon} /></span>
                 <span><strong>{item.label}</strong><small>{item.detail}</small></span>
                 <b>{initialLoading ? "—" : item.value}{!initialLoading && <small>개</small>}</b>
               </button>
@@ -102,7 +103,7 @@ export default function HomeOverview({
             {visibleContainers.map((container) => (
               <li key={container.id}>
                 <button type="button" onClick={() => onNavigate("containers")} aria-label={`${container.name} 컨테이너 관리 화면 열기`}>
-                  <span className="recent-container-identity"><i aria-hidden="true">▣</i><span><strong>{container.name}</strong><small>{container.image}</small></span></span>
+                  <span className="recent-container-identity"><i aria-hidden="true"><UiIcon name="container" /></i><span><strong>{container.name}</strong><small>{container.image}</small></span></span>
                   <span className={`status-pill ${container.status}`}><i />{statusLabels[container.status] || container.status}</span>
                   <span className="recent-container-usage"><span>CPU <b>{Number(container.cpuPercent || 0).toFixed(1)}%</b></span><span>메모리 <b>{Number(container.memoryMb || 0).toFixed(0)} MB</b></span></span>
                   <span className="row-arrow" aria-hidden="true">›</span>
@@ -111,7 +112,7 @@ export default function HomeOverview({
             ))}
           </ul>
         ) : (
-          <div className="home-empty-state"><span aria-hidden="true">◇</span><div><strong>아직 컨테이너가 없습니다.</strong><p>첫 컨테이너를 만들어 로컬 환경을 시작하세요.</p></div><button type="button" onClick={onCreate}>컨테이너 생성</button></div>
+          <div className="home-empty-state"><span aria-hidden="true"><UiIcon name="container" /></span><div><strong>아직 컨테이너가 없습니다.</strong><p>첫 컨테이너를 만들어 로컬 환경을 시작하세요.</p></div><button type="button" onClick={onCreate}>컨테이너 생성</button></div>
         )}
       </section>
     </div>

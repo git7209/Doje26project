@@ -1,8 +1,8 @@
 const Icon = ({ children }) => <span className="nav-icon" aria-hidden="true">{children}</span>;
+const BrandMark = ({ className = "" }) => <span className={`brand-mark ${className}`.trim()} aria-hidden="true"><img src="/favicon.png" alt="" /></span>;
 
 const MenuIcon = ({ name }) => {
   const paths = {
-    overview: <><path d="m3 11 9-8 9 8" /><path d="M5.5 9.5V21h13V9.5M9.5 21v-7h5v7" /></>,
     containers: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4.5 7.7 7.5 4.2 7.5-4.2M12 12v8.5" /></>,
     images: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3.5 3.5 2.5-2.5 5 5" /></>,
     storage: <><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>,
@@ -27,14 +27,14 @@ export default function Sidebar({ activeView, total, onNavigate }) {
   return (
     <aside className="sidebar">
       <button className="brand" type="button" onClick={() => onNavigate("overview")} aria-label="홈으로 이동">
-        <span className="brand-mark">C</span>
-        <span><b>Container</b><small>DESKTOP</small></span>
+        <BrandMark />
+        <span><b>Container Check</b><small>LOCAL CONSOLE</small></span>
       </button>
       <nav className="primary-nav" aria-label="주 메뉴">
         <div className="overview-nav">
           <p className="nav-label">개요</p>
           <button className={`home-nav-button ${activeView === "overview" ? "active" : ""}`} type="button" onClick={() => onNavigate("overview")} aria-label="홈, 전체 운영 현황" aria-current={activeView === "overview" ? "page" : undefined}>
-            <MenuIcon name="overview" />
+            <BrandMark className="home-brand-mark" />
             <span className="nav-copy"><span className="nav-text">홈</span><small>전체 운영 현황</small></span>
           </button>
         </div>

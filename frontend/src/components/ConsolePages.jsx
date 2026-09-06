@@ -229,13 +229,8 @@ export function SettingsPage({ settings, onSettingsChange, notify }) {
 }
 
 export function SupportPage({ runtime, lastChecked, notify }) {
-  async function copy() { await navigator.clipboard?.writeText(`LXC Console\nRuntime: ${runtime}\nLast checked: ${lastChecked}`); notify("진단 정보를 복사했습니다."); }
+  async function copy() { await navigator.clipboard?.writeText(`Container Check\nRuntime: ${runtime}\nLast checked: ${lastChecked}`); notify("진단 정보를 복사했습니다."); }
   return <Page title="지원" description="문제 해결에 필요한 정보와 사용 안내를 확인합니다."><section className="support-grid"><article><h2>빠른 도움말</h2><details open><summary>컨테이너가 시작되지 않아요</summary><p>이미지가 존재하는지, 포트가 다른 컨테이너와 충돌하지 않는지 확인하세요.</p></details><details><summary>이미지를 어떻게 추가하나요?</summary><p>이미지 메뉴의 업로드 버튼에서 tar, tar.gz, tgz, tar.xz, zip 또는 qcow2 파일을 선택하세요.</p></details><details><summary>네트워크 주소가 보이지 않아요</summary><p>컨테이너가 실행 중이고 Docker 네트워크에 연결되어 있는지 확인하세요.</p></details></article><article className="diagnostic-card"><h2>진단 정보</h2><dl><div><dt>런타임</dt><dd>{runtime}</dd></div><div><dt>마지막 확인</dt><dd>{lastChecked}</dd></div><div><dt>콘솔 버전</dt><dd>1.0.0</dd></div></dl><button type="button" onClick={copy}>진단 정보 복사</button></article></section></Page>;
-}
-
-export function ProfilePage({ profile, onProfileChange, notify }) {
-  function save(event) { event.preventDefault(); onProfileChange(profile); notify("프로필을 저장했습니다."); }
-  return <Page title="프로필" description="콘솔에 표시되는 계정 정보를 관리합니다."><form className="profile-card" onSubmit={save}><div className="profile-avatar">{profile.name.slice(0, 2).toUpperCase()}</div><div className="profile-fields"><label><span>표시 이름</span><input value={profile.name} onChange={(event) => onProfileChange({...profile, name: event.target.value}, false)} required /></label><label><span>이메일</span><input type="email" value={profile.email} onChange={(event) => onProfileChange({...profile, email: event.target.value}, false)} required /></label><label><span>역할</span><input value={profile.role} disabled /></label><button className="primary" type="submit">프로필 저장</button></div></form></Page>;
 }
 
 export function TerminalPage({ containers = [] }) {

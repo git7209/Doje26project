@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getAuthSession, getDashboard, getHealth, getImages, getNetworks, getVolumes } from "./api/dockerApi.js";
+import { getDashboard, getHealth, getImages, getNetworks, getVolumes } from "./api/dockerApi.js";
 import AppHeader from "./components/AppHeader.jsx";
 import ContainerSection from "./components/ContainerSection.jsx";
 import CreateContainerDialog from "./components/CreateContainerDialog.jsx";
 import HomeOverview from "./components/HomeOverview.jsx";
 import ImagesSection from "./components/ImagesSection.jsx";
 import Sidebar from "./components/Sidebar.jsx";
-import { EventsPage, NetworksPage, ProfilePage, SettingsPage, StoragePage, SupportPage, TerminalPage } from "./components/ConsolePages.jsx";
+import { EventsPage, NetworksPage, SettingsPage, StoragePage, SupportPage, TerminalPage } from "./components/ConsolePages.jsx";
 
 const dateText = (value) => value ? new Date(value).toLocaleString("ko-KR") : "-";
 
 export default function App() {
   const [activeView, setActiveView] = useState("overview");
-  const [authUser, setAuthUser] = useState(null);
-  const [authChecking, setAuthChecking] = useState(true);
   const [dashboard, setDashboard] = useState({ containers: [], summary: {} });
   const [images, setImages] = useState([]);
   const [networks, setNetworks] = useState([]);
@@ -25,7 +23,6 @@ export default function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notification, setNotification] = useState("");
   const [settings, setSettings] = useState(() => JSON.parse(localStorage.getItem("lxc-console-settings") || '{"refresh":10,"compact":false,"theme":"blue","darkMode":false,"autoRefresh":true,"autoOpenNetwork":true,"browserNotifications":true}'));
-  const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem("lxc-console-profile") || '{"name":"deok7","email":"admin@localhost","role":"Administrator"}'));
   const [events, setEvents] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [panel, setPanel] = useState("");
@@ -65,43 +62,24 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
-    getAuthSession()
-      .then((data) => setAuthUser(data.user || null))
-      .catch(() => setAuthUser(null))
-      .finally(() => setAuthChecking(false));
-  }, []);
-  useEffect(() => {
-    if (authChecking) return;
-    if (authUser) refresh();
-    else setLoading(false);
-  }, [authChecking, authUser, refresh]);
-  useEffect(() => {
-    if (!authUser || settings.autoRefresh === false) return undefined;
+    if (settings.autoRefresh === false) return undefined;
     const timer = window.setInterval(refresh, settings.refresh * 1000);
     return () => window.clearInterval(timer);
-  }, [authUser, refresh, settings.refresh, settings.autoRefresh]);
+  }, [refresh, settings.refresh, settings.autoRefresh]);
   useEffect(() => { document.body.classList.toggle("compact-mode", settings.compact); }, [settings.compact]);
   useEffect(() => { document.body.classList.toggle("dark-mode", settings.darkMode); }, [settings.darkMode]);
 
   function updateSettings(next) { setSettings(next); localStorage.setItem("lxc-console-settings", JSON.stringify(next)); }
-  function updateProfile(next, persist = true) { setProfile(next); if (persist) localStorage.setItem("lxc-console-profile", JSON.stringify(next)); }
   function notify(message) { setNotification(message); window.setTimeout(() => setNotification(""), 2500); }
   async function handleCreated(name) { setDialogOpen(false); notify(`${name} 컨테이너를 생성했습니다.`); await refresh(); }
-  function handleAuthenticated(user) { setAuthUser(user); notify(`${user.name}님, 환영합니다.`); }
-  function handleLoggedOut() {
-    setAuthUser(null);
-    setDashboard({ containers: [], summary: {} });
-    setImages([]); setNetworks([]); setVolumes([]); setEvents([]); setNotifications([]);
-    setActiveView("overview");
-    notify("로그아웃했습니다.");
-  }
 
   return (
     <div className="app-shell">
-      <Sidebar activeView={activeView} onNavigate={setActiveView} total={dashboard.summary.total || 0} profile={profile} />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} total={dashboard.summary.total || 0} />
       <main>
-        <AppHeader user={authUser} authChecking={authChecking} notifications={notifications} onOpenNotifications={() => setPanel(panel === "notifications" ? "" : "notifications")} onOpenDocs={() => setPanel(panel === "docs" ? "" : "docs")} onAuthenticated={handleAuthenticated} onLoggedOut={handleLoggedOut} onOpenAuth={() => setPanel("")} />
+        <AppHeader runtime={runtime} notifications={notifications} onOpenNotifications={() => setPanel(panel === "notifications" ? "" : "notifications")} onOpenDocs={() => setPanel(panel === "docs" ? "" : "docs")} />
 
         {panel === "notifications" && <section className="header-panel">
           <header><h2>알림</h2><button type="button" onClick={() => { setNotifications([]); setPanel(""); }}>모두 읽음</button></header>
@@ -113,17 +91,15 @@ export default function App() {
           <button type="button" onClick={() => { setActiveView("support"); setPanel(""); }}>도움말 열기</button>
         </section>}
 
-        {!authChecking && !authUser && <section className="content signed-out-state"><span>ACCOUNT REQUIRED</span><h1>로그인이 필요합니다</h1><p>오른쪽 위의 로그인 버튼을 눌러 로그인하거나 새 계정을 만드세요.</p></section>}
-        {authUser && activeView === "images" && <ImagesSection images={images} loading={loading} onRefresh={refresh} notify={notify} requestError={error} />}
-        {authUser && activeView === "networks" && <NetworksPage networks={networks} containers={dashboard.containers} loading={loading} onRefresh={refresh} error={error} notify={notify} autoOpenNetwork={settings.autoOpenNetwork} confirmNetworkDelete={settings.confirmNetworkDelete} />}
-        {authUser && activeView === "storage" && <StoragePage volumes={volumes} loading={loading} onRefresh={refresh} error={error} notify={notify} confirmVolumeDelete={settings.confirmVolumeDelete !== false} />}
-        {authUser && activeView === "events" && <EventsPage events={events.length ? events : dashboard.containers.map((item) => ({ ...item, message: `현재 ${item.status} 상태입니다.` }))} />}
-        {authUser && activeView === "terminal" && <TerminalPage containers={dashboard.containers} />}
-        {authUser && activeView === "settings" && <SettingsPage settings={settings} onSettingsChange={updateSettings} notify={notify} />}
-        {authUser && activeView === "support" && <SupportPage runtime={runtime} lastChecked={lastChecked} notify={notify} />}
-        {authUser && activeView === "profile" && <ProfilePage profile={profile} onProfileChange={updateProfile} notify={notify} />}
+        {activeView === "images" && <ImagesSection images={images} loading={loading} onRefresh={refresh} notify={notify} requestError={error} />}
+        {activeView === "networks" && <NetworksPage networks={networks} containers={dashboard.containers} loading={loading} onRefresh={refresh} error={error} notify={notify} autoOpenNetwork={settings.autoOpenNetwork} confirmNetworkDelete={settings.confirmNetworkDelete} />}
+        {activeView === "storage" && <StoragePage volumes={volumes} loading={loading} onRefresh={refresh} error={error} notify={notify} confirmVolumeDelete={settings.confirmVolumeDelete !== false} />}
+        {activeView === "events" && <EventsPage events={events.length ? events : dashboard.containers.map((item) => ({ ...item, message: `현재 ${item.status} 상태입니다.` }))} />}
+        {activeView === "terminal" && <TerminalPage containers={dashboard.containers} />}
+        {activeView === "settings" && <SettingsPage settings={settings} onSettingsChange={updateSettings} notify={notify} />}
+        {activeView === "support" && <SupportPage runtime={runtime} lastChecked={lastChecked} notify={notify} />}
 
-        {authUser && activeView === "overview" && <HomeOverview
+        {activeView === "overview" && <HomeOverview
           dashboard={dashboard}
           images={images}
           networks={networks}
@@ -137,7 +113,7 @@ export default function App() {
           onNavigate={setActiveView}
         />}
 
-        {authUser && activeView === "containers" && <div className="content desktop-content containers-view">
+        {activeView === "containers" && <div className="content desktop-content containers-view">
           <section className="desktop-heading">
             <div><span className="eyebrow">CONTAINER MANAGEMENT</span><h1>컨테이너</h1><p>컨테이너를 검색하고 상태를 확인하거나 실행 작업을 관리하세요.</p></div>
             <div className="heading-actions"><button type="button" className="refresh-button" onClick={refresh} disabled={loading}>↻ {loading ? "새로 고치는 중" : "새로 고침"}</button><button type="button" className="primary create-button" onClick={() => setDialogOpen(true)}>＋ 컨테이너 생성</button></div>
@@ -146,7 +122,7 @@ export default function App() {
           <ContainerSection containers={dashboard.containers} loading={loading} onChanged={refresh} notify={notify} confirmDelete={settings.confirmContainerDelete !== false} confirmStop={settings.confirmContainerStop !== false} requireNameConfirmation={settings.requireNameConfirmation} />
         </div>}
       </main>
-      {authUser && dialogOpen && <CreateContainerDialog images={images} volumes={volumes} onClose={() => setDialogOpen(false)} onCreated={handleCreated} />}
+      {dialogOpen && <CreateContainerDialog images={images} volumes={volumes} onClose={() => setDialogOpen(false)} onCreated={handleCreated} />}
       {notification && <div className="notification">{notification}</div>}
     </div>
   );
