@@ -15,7 +15,7 @@ Node.js 대시보드에서 로컬 Docker Engine의 이미지와 컨테이너를 
 
 ```powershell
 npm run build
-wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/deok7/LxcProgramMade && /usr/bin/npm start"
+wsl -d Ubuntu -u root -- bash -lc "cd /mnt/c/Users/yourname/LxcProgramMade && /usr/bin/npm start"
 ```
 
 React 화면만 개발할 때는 백엔드를 실행한 상태에서 별도 PowerShell을 열고 다음을

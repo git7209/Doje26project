@@ -8,9 +8,12 @@ const initialForm = {
   cpuLimit: "0",
   memory: "0",
   memoryUnit: "MB",
+  volume: "",
+  mountPath: "/data",
+  volumeReadOnly: false,
 };
 
-export default function CreateContainerDialog({ images, onClose, onCreated }) {
+export default function CreateContainerDialog({ images, volumes = [], onClose, onCreated }) {
   const dialogRef = useRef(null);
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
@@ -21,7 +24,8 @@ export default function CreateContainerDialog({ images, onClose, onCreated }) {
   }, []);
 
   function update(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    setForm((current) => ({ ...current, [event.target.name]: value }));
   }
 
   async function submit(event) {
@@ -43,6 +47,11 @@ export default function CreateContainerDialog({ images, onClose, onCreated }) {
         ports: form.ports.trim(),
         cpuLimit: Number(form.cpuLimit || 0),
         memoryMb: Number(form.memory || 0) * (form.memoryUnit === "GB" ? 1024 : 1),
+        volumeMounts: form.volume ? [{
+          volume: form.volume,
+          target: form.mountPath.trim(),
+          readOnly: form.volumeReadOnly,
+        }] : [],
       });
       await onCreated(form.name);
     } catch (requestError) {
@@ -94,6 +103,19 @@ export default function CreateContainerDialog({ images, onClose, onCreated }) {
               </div>
             </div>
           </div>
+          <div className="form-field">
+            <label htmlFor="container-volume">데이터 볼륨</label>
+            <select id="container-volume" name="volume" value={form.volume} onChange={update}>
+              <option value="">볼륨을 연결하지 않음</option>
+              {volumes.map((volume) => <option key={volume.name} value={volume.name}>{volume.name}</option>)}
+            </select>
+            <small>볼륨에 저장된 데이터는 컨테이너를 삭제해도 유지됩니다.</small>
+          </div>
+          {form.volume && <div className="form-field volume-mount-options">
+            <label htmlFor="container-mount-path">컨테이너 마운트 경로</label>
+            <input id="container-mount-path" name="mountPath" value={form.mountPath} onChange={update} placeholder="/data" required />
+            <label className="inline-check"><input name="volumeReadOnly" type="checkbox" checked={form.volumeReadOnly} onChange={update} /> 읽기 전용으로 연결</label>
+          </div>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <footer>
             <button type="button" onClick={onClose}>취소</button>

@@ -1,0 +1,7 @@
+tunnel: e345bc8f-3fdf-47ae-bdba-c68896e7c6a7
+credentials-file: C:\Users\deok7\.cloudflared\e345bc8f-3fdf-47ae-bdba-c68896e7c6a7.json
+
+ingress:
+  - hostname: lxc.deokdev.site
+    service: http://127.0.0.1:8081
+  - service: http_status:404
