@@ -9,6 +9,7 @@ const {
 } = require("../desktop/runtime/detect-docker-runtime.cjs");
 const {
   createPtyCommand,
+  PtyTransport,
   safeEnvironment,
 } = require("../desktop/terminal/pty-transport.cjs");
 const {
@@ -53,6 +54,27 @@ test("PTY 자식 프로세스 환경에서 데스크톱 인증 토큰을 제거�
     safeEnvironment({ PATH: "bin", CONTAINER_CHECK_DESKTOP_TOKEN: "secret", NUMBER: 1 }),
     { PATH: "bin" },
   );
+});
+
+test("PTY가 자연 종료되면 이미 끝난 ConPTY 프로세스를 다시 종료하지 않는다", async () => {
+  let exitListener;
+  const child = {
+    pid: 42,
+    killCalls: 0,
+    onData() {},
+    onExit(listener) { exitListener = listener; },
+    kill() { this.killCalls += 1; },
+  };
+  const transport = new PtyTransport({
+    runtime: { kind: "native", executable: "docker.exe", prefixArgs: [], label: "Docker Desktop" },
+    pty: { spawn: () => child },
+  });
+
+  await transport.open({ containerId: "abc123", shell: "sh", cols: 80, rows: 24 });
+  exitListener({ exitCode: 0, signal: null });
+  transport.close();
+
+  assert.equal(child.killCalls, 0);
 });
 
 test("WSL UTF-16 출력과 배포판 우선순위를 정규화한다", () => {
@@ -116,4 +138,3 @@ test("세션 관리자가 입출력, resize, 소유권과 종료를 관리한다
   assert.equal(manager.sessions.size, 0);
   assert.equal(events.at(-1).payload.reason, "user");
 });
-

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { connectNetwork, createNetwork, createVolume, deleteNetwork, deleteVolume, disconnectNetwork, getNetwork, runTerminalCommand } from "../api/dockerApi.js";
+import { useEffect, useMemo, useState } from "react";
+import { connectNetwork, createNetwork, createVolume, deleteNetwork, deleteVolume, disconnectNetwork, getNetwork } from "../api/dockerApi.js";
 
 const dateText = (value) => value ? new Date(value).toLocaleString("ko-KR") : "-";
 
@@ -231,58 +231,4 @@ export function SettingsPage({ settings, onSettingsChange, notify }) {
 export function SupportPage({ runtime, lastChecked, notify }) {
   async function copy() { await navigator.clipboard?.writeText(`Container Check\nRuntime: ${runtime}\nLast checked: ${lastChecked}`); notify("진단 정보를 복사했습니다."); }
   return <Page title="지원" description="문제 해결에 필요한 정보와 사용 안내를 확인합니다."><section className="support-grid"><article><h2>빠른 도움말</h2><details open><summary>컨테이너가 시작되지 않아요</summary><p>이미지가 존재하는지, 포트가 다른 컨테이너와 충돌하지 않는지 확인하세요.</p></details><details><summary>이미지를 어떻게 추가하나요?</summary><p>이미지 메뉴의 업로드 버튼에서 tar, tar.gz, tgz, tar.xz, zip 또는 qcow2 파일을 선택하세요.</p></details><details><summary>네트워크 주소가 보이지 않아요</summary><p>컨테이너가 실행 중이고 Docker 네트워크에 연결되어 있는지 확인하세요.</p></details></article><article className="diagnostic-card"><h2>진단 정보</h2><dl><div><dt>런타임</dt><dd>{runtime}</dd></div><div><dt>마지막 확인</dt><dd>{lastChecked}</dd></div><div><dt>콘솔 버전</dt><dd>1.0.0</dd></div></dl><button type="button" onClick={copy}>진단 정보 복사</button></article></section></Page>;
-}
-
-export function TerminalPage({ containers = [] }) {
-  const runningContainers = containers.filter((container) => container.status === "running");
-  const [containerId, setContainerId] = useState("");
-  const [command, setCommand] = useState("");
-  const [lines, setLines] = useState([]);
-  const [working, setWorking] = useState(false);
-  const inputRef = useRef(null);
-  const selectedId = runningContainers.some((container) => container.id === containerId)
-    ? containerId
-    : runningContainers[0]?.id || "";
-
-  async function execute(event) {
-    event.preventDefault();
-    const value = command.trim();
-    if (!value || working) return;
-    if (!selectedId) {
-      setLines((current) => [...current, { type: "command", text: `$ ${value}` }, { type: "error", text: "실행 중인 컨테이너가 없습니다. 컨테이너를 먼저 실행하세요." }]);
-      return;
-    }
-    setCommand("");
-    setWorking(true);
-    setLines((current) => [...current, { type: "command", text: `$ ${value}` }]);
-    try {
-      const result = await runTerminalCommand(selectedId, value);
-      setLines((current) => [...current, { type: "output", text: result.output || "(출력 없음)" }]);
-    } catch (error) {
-      setLines((current) => [...current, { type: "error", text: error.message }]);
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  return <Page title="터미널" description="실행 중인 컨테이너에서 셸 명령을 실행합니다.">
-    <section className="terminal-card">
-      <header>
-        <span className="terminal-target-label">컨테이너</span>
-        <div className="terminal-targets" aria-label="터미널 대상 컨테이너">
-          {!runningContainers.length && <span>실행 중인 컨테이너 없음</span>}
-          {runningContainers.map((container) => <button className={selectedId === container.id ? "active" : ""} type="button" key={container.id} onClick={() => { setContainerId(container.id); setLines([]); }} disabled={working}>{container.name}</button>)}
-        </div>
-        <button type="button" onClick={() => setLines([])} disabled={!lines.length || working}>화면 지우기</button>
-      </header>
-      <div className="terminal-output" role="log" aria-live="polite" onClick={() => inputRef.current?.focus()}>
-        {lines.length ? lines.map((line, index) => <pre className={line.type} key={`${index}-${line.text}`}>{line.text}</pre>) : <p>{runningContainers.length ? "명령어를 입력해 시작하세요." : "먼저 컨테이너를 실행하세요."}</p>}
-      </div>
-      <form onSubmit={execute}>
-        <span aria-hidden="true">$</span>
-        <input ref={inputRef} value={command} onChange={(event) => setCommand(event.target.value)} placeholder="예: ls -la" maxLength="1000" disabled={working} autoComplete="off" autoFocus aria-label="실행할 명령어" />
-        <button className="primary" type="submit" disabled={!command.trim() || working}>{working ? "실행 중" : "실행"}</button>
-      </form>
-    </section>
-  </Page>;
 }

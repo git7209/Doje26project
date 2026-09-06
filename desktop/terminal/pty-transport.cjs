@@ -77,9 +77,13 @@ class PtyTransport {
     } catch (error) {
       throw new TerminalError("TERMINAL_START_FAILED", "터미널 프로세스를 시작하지 못했습니다.", error.message);
     }
-    this.process.onData((data) => this.emit("data", data));
-    this.process.onExit((event) => this.emit("exit", event));
-    return { shell: command.shell, runtime: this.runtime.label, pid: this.process.pid };
+    const child = this.process;
+    child.onData((data) => this.emit("data", data));
+    child.onExit((event) => {
+      if (this.process === child) this.process = null;
+      this.emit("exit", event);
+    });
+    return { shell: command.shell, runtime: this.runtime.label, pid: child.pid };
   }
 
   write(data) {
@@ -94,8 +98,9 @@ class PtyTransport {
 
   close() {
     if (!this.process) return;
-    try { this.process.kill(); } catch {}
+    const child = this.process;
     this.process = null;
+    try { child.kill(); } catch {}
   }
 }
 

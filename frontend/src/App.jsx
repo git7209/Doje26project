@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { getDashboard, getHealth, getImages, getNetworks, getVolumes } from "./api/dockerApi.js";
 import AppHeader from "./components/AppHeader.jsx";
 import ContainerSection from "./components/ContainerSection.jsx";
@@ -6,7 +6,9 @@ import CreateContainerDialog from "./components/CreateContainerDialog.jsx";
 import HomeOverview from "./components/HomeOverview.jsx";
 import ImagesSection from "./components/ImagesSection.jsx";
 import Sidebar from "./components/Sidebar.jsx";
-import { EventsPage, NetworksPage, SettingsPage, StoragePage, SupportPage, TerminalPage } from "./components/ConsolePages.jsx";
+import { EventsPage, NetworksPage, SettingsPage, StoragePage, SupportPage } from "./components/ConsolePages.jsx";
+
+const TerminalPage = lazy(() => import("./components/terminal/TerminalPage.jsx"));
 
 const dateText = (value) => value ? new Date(value).toLocaleString("ko-KR") : "-";
 
@@ -95,7 +97,7 @@ export default function App() {
         {activeView === "networks" && <NetworksPage networks={networks} containers={dashboard.containers} loading={loading} onRefresh={refresh} error={error} notify={notify} autoOpenNetwork={settings.autoOpenNetwork} confirmNetworkDelete={settings.confirmNetworkDelete} />}
         {activeView === "storage" && <StoragePage volumes={volumes} loading={loading} onRefresh={refresh} error={error} notify={notify} confirmVolumeDelete={settings.confirmVolumeDelete !== false} />}
         {activeView === "events" && <EventsPage events={events.length ? events : dashboard.containers.map((item) => ({ ...item, message: `현재 ${item.status} 상태입니다.` }))} />}
-        {activeView === "terminal" && <TerminalPage containers={dashboard.containers} />}
+        {activeView === "terminal" && <Suspense fallback={<div className="content terminal-page-loading"><span className="loading-spinner" /><p>터미널을 준비하고 있습니다.</p></div>}><TerminalPage containers={dashboard.containers} /></Suspense>}
         {activeView === "settings" && <SettingsPage settings={settings} onSettingsChange={updateSettings} notify={notify} />}
         {activeView === "support" && <SupportPage runtime={runtime} lastChecked={lastChecked} notify={notify} />}
 
