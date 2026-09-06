@@ -78,6 +78,35 @@ function isAppUrl(value) {
   }
 }
 
+async function runTerminalSmoke(containerId) {
+  if (!selectedRuntime) throw new Error("Docker runtime was not detected");
+  const transport = new PtyTransport({
+    runtime: selectedRuntime,
+    cwd: app.getPath("home"),
+  });
+  let output = "";
+  let timer;
+  const completed = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error("Terminal smoke test timed out")), 12000);
+    timer.unref?.();
+    transport.onData((data) => { output += data; });
+    transport.onError(reject);
+    transport.onExit(() => {
+      if (output.includes("CONTAINER_CHECK_PACKAGED_TERMINAL_OK")) resolve();
+      else reject(new Error("Terminal smoke marker was not returned"));
+    });
+  });
+  try {
+    await transport.open({ containerId, cols: 100, rows: 30, shell: "auto" });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    transport.write("printf 'CONTAINER_CHECK_PACKAGED_TERMINAL_OK\\n'; exit\r");
+    await completed;
+  } finally {
+    clearTimeout(timer);
+    transport.close();
+  }
+}
+
 function registerTerminalBridge() {
   terminalManager = new TerminalSessionManager({
     createTransport: async () => new PtyTransport({
@@ -126,6 +155,9 @@ function createWindow() {
         );
         if (result.status !== 200 || result.body?.ok !== true) {
           throw new Error(`Backend health check failed (${result.status})`);
+        }
+        if (process.env.CONTAINER_CHECK_SMOKE_CONTAINER) {
+          await runTerminalSmoke(process.env.CONTAINER_CHECK_SMOKE_CONTAINER);
         }
         console.log(`Desktop smoke test passed (${result.body.runtime}).`);
         app.exit(0);

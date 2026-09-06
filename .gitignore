@@ -26,6 +26,7 @@ dist/
 !frontend/dist/
 !frontend/dist/**
 build/
+release/
 coverage/
 .cache/
 .tmp/

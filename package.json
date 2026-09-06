@@ -1,5 +1,5 @@
 {
-  "name": "lxc-container-dashboard",
+  "name": "container-check",
   "version": "1.0.0",
   "private": true,
   "description": "로컬 Docker 컨테이너를 관리하는 데스크톱 콘솔",
@@ -11,7 +11,10 @@
     "check": "node --check server.js && node --check docker-engine.js && npm --prefix frontend run build",
     "test": "node --test",
     "desktop": "npm run build && electron .",
-    "desktop:start": "electron ."
+    "desktop:start": "electron .",
+    "package:dir": "npm run build && electron-builder --dir --win --x64",
+    "package:win": "npm run build && electron-builder --win nsis --x64",
+    "package:smoke": "node tools/package-smoke.cjs"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
@@ -21,5 +24,45 @@
   "devDependencies": {
     "electron": "^44.2.0",
     "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "dev.containercheck.desktop",
+    "productName": "Container Check",
+    "asar": true,
+    "npmRebuild": false,
+    "compression": "normal",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "frontend/dist/**/*",
+      "server.js",
+      "docker-engine.js",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "frontend/public/favicon.png",
+      "artifactName": "Container-Check-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Container Check",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }
